@@ -36,6 +36,10 @@ python -m app.main
 
 The server entry point is `app.server`. Review its security and configuration requirements before exposing it beyond your own machine.
 
+## Credential storage and provider bridges
+
+See [API key storage and provider bridges](docs/API_KEYS_AND_PROVIDER_BRIDGES.md) for local secret setup, account-scoped credential handling, and the provider request flow. The guide contains no real credentials.
+
 ## Data and provider requests
 
 By default, Jupiter stores user-scoped memory and application data under `data/`; logs are written under `logs/`. These directories are ignored by Git. Do not add real conversations, memory databases, logs, credentials, or screenshots containing personal information to issues or pull requests.
