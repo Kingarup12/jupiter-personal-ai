@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-09-21",
+  "notes": "Operational planning ceilings, not credential entitlement. Google limits use the user-supplied Google AI Studio API.png for one free-tier project, reviewed 2026-09-21; other accounts still require credential-scoped admission. Runtime provider errors remain authoritative; null means no known numeric ceiling, never proven unlimited.",
+  "defaults": {
+    "cooldown_seconds": 60,
+    "high_pressure_remaining": 0.15,
+    "medium_pressure_remaining": 0.35
+  },
+  "providers": {
+    "groq": {"quota_class": "independent_model", "source": "existing-model-console-evidence"},
+    "google": {"quota_class": "project_model", "source": "existing-project-model-console-evidence"},
+    "cloudflare": {
+      "quota_class": "shared_account",
+      "shared_daily_units": 10000,
+      "shared_unit": "neurons",
+      "reserve_fraction": 0.25,
+      "source": "local-audit-planning-ceiling-not-current-entitlement-proof",
+      "estimates": {
+        "default": 500, "input_token": 0.15, "audio_second": 3,
+        "image_generation": 2500, "embeddings": 100,
+        "audio_transcription": 150, "tts": 300, "safety": 100
+      }
+    },
+    "openrouter": {
+      "quota_class": "shared_account",
+      "shared_daily_requests": 50,
+      "source": "conservative-local-free-request-budget-account-entitlement-unverified"
+    },
+    "nvidia": {"quota_class": "mixed", "shared_daily_units": null, "shared_unit": "credits", "source": "shared-credit-capacity-unknown-no-independent-daily-pools"},
+    "opencode": {"quota_class": "mixed", "shared_daily_units": null, "shared_unit": "credits", "source": "shared-credit-capacity-unknown-no-independent-daily-pools"},
+    "bytez": {
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "max_concurrent": 1,
+      "background_enabled": false,
+      "credit_metered": true,
+      "source": "specialist-free-credit-conservative-policy"
+    }
+  },
+  "models": {
+    "google:gemini-3.1-flash-tts-preview": {"rpm": 3, "rpd": 10, "tpm": 10000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-2.5-flash-preview-tts": {"rpm": 3, "rpd": 10, "tpm": 10000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-2.5-flash": {"rpm": 5, "rpd": 20, "tpm": 250000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-2.5-flash-lite": {"rpm": 10, "rpd": 20, "tpm": 250000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.5-flash": {"rpm": 5, "rpd": 20, "tpm": 250000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.6-flash": {"rpm": 5, "rpd": 20, "tpm": 250000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.7-flash": {"rpm": 5, "rpd": 20, "tpm": 250000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.8-flash": {"rpm": 5, "rpd": 20, "tpm": 250000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.1-flash-lite": {"rpm": 15, "rpd": 500, "tpm": 250000, "source": "current-project-console-evidence"},
+    "google:gemini-3.5-flash-lite": {"rpm": 15, "rpd": 500, "tpm": 250000, "source": "current-project-console-evidence"},
+    "google:gemini-3-flash-preview": {"rpm": 5, "rpd": 20, "tpm": 250000, "source": "current-project-console-evidence"},
+    "google:gemini-3.1-flash-live-preview": {"rpm": null, "rpd": null, "tpm": 65000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-2.5-flash-native-audio-preview-12-2025": {"rpm": null, "rpd": null, "tpm": 1000000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.5-live-translate-preview": {"rpm": null, "rpd": null, "tpm": 20000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.8-live": {"rpm": null, "rpd": null, "tpm": 65000, "source": "user-project-screenshot-2026-09-21"},
+    "google:gemini-3.8-live-extended-thinking": {"rpm": null, "rpd": null, "tpm": 65000, "source": "user-project-screenshot-2026-09-21"},
+    "groq:allam-2-7b": {"rpm": 30, "rpd": 7000, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:groq/compound": {"rpm": 30, "rpd": 250, "tpm": 70000, "source": "current-project-console-evidence"},
+    "groq:groq/compound-mini": {"rpm": 30, "rpd": 250, "tpm": 70000, "source": "current-project-console-evidence"},
+    "groq:llama-3.1-8b-instant": {"rpm": 30, "rpd": 14400, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:llama-3.3-70b-versatile": {"rpm": 30, "rpd": 1000, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:meta-llama/llama-prompt-guard-2-22m": {"rpm": 30, "rpd": 14400, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:meta-llama/llama-prompt-guard-2-86m": {"rpm": 30, "rpd": 14400, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:openai/gpt-oss-120b": {"rpm": 30, "rpd": 1000, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:openai/gpt-oss-20b": {"rpm": 30, "rpd": 1000, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:openai/gpt-oss-safeguard-20b": {"rpm": 30, "rpd": 1000, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:qwen/qwen3.6-27b": {"rpm": 30, "rpd": 1000, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:canopylabs/orpheus-v1-english": {"rpm": 10, "rpd": 100, "tpm": null, "source": "current-project-console-evidence"},
+    "groq:canopylabs/orpheus-arabic-saudi": {"rpm": 10, "rpd": 100, "tpm": null, "source": "current-project-console-evidence"}
+  }
+}

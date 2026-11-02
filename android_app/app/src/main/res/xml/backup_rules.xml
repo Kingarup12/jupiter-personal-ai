@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exclude-only, so everything else keeps backing up as before. The per-device Jupiter call identity (device id +
+     secret) is never restored onto another phone: two phones would otherwise share one call registration. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="jupiter_calls.xml" />
+</full-backup-content>

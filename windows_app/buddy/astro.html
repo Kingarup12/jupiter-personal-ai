@@ -1,0 +1,2907 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juno - Jupiter Buddy</title>
+<!-- Astro Buddy (marker 204): the 3D chibi astronaut from prototype/buddy_demo, embeddable in the Live screen and the
+     Windows desktop overlay. Three.js r128 (same build as the prototype). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:transparent; user-select:none; -webkit-user-select:none;
+    touch-action:none;
+    font:12px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; color:#e8f6ff; }
+  body.desk { background:transparent; cursor:grab; }
+  #canvas-container { position:fixed; inset:0; }
+  /* Windows frame (marker 211): Juno's stage is a fixed box of a fixed window; the host sends the same numbers
+     (services/notch_overlay.py ASTRO_STAGE_AT / ASTRO_STAGE) with setNotch({layout}). */
+  body.desk #canvas-container { inset:auto; left:232px; top:194px; width:132px; height:156px; }
+  /* The expanded panel, Pixie's look: status, the live transcript, the checklist, open / small / hide. */
+  #panel { position:fixed; display:none; flex-direction:column; gap:2px; box-sizing:border-box; padding:0 14px 10px;
+    border-radius:16px; background:#000; color:#f5f7fb; font:13px/18px system-ui, "Segoe UI", sans-serif;
+    overflow:hidden; cursor:default; z-index:2; }
+  body.desk[data-mode="expanded"][data-panel] #panel { display:flex; }
+  body.desk[data-mode="expanded"][data-panel] #panel > * { animation:panelIn .2s ease-out both; }
+  body[data-panel="above"] #panel > * { animation-name:panelInUp; }
+  @keyframes panelIn { from { opacity:0; transform:translateY(-5px); } }
+  @keyframes panelInUp { from { opacity:0; transform:translateY(5px); } }
+  .prow { display:flex; align-items:center; gap:8px; height:38px; flex:none; min-width:0; }
+  .pdot { width:8px; height:8px; border-radius:50%; background:#9aa4b2; flex:none; }
+  body[data-live="listening"] .pdot { background:#4facfe; animation:pdot 1.4s infinite; }
+  body[data-live="thinking"] .pdot, body[data-live="acting"] .pdot { background:#ffb340; animation:pdot 1s infinite; }
+  body[data-live="speaking"] .pdot, body[data-live="done"] .pdot { background:#3ddc84; }
+  body[data-live="error"] .pdot { background:#ff5a5f; }
+  @keyframes pdot { 50% { opacity:.35; } }
+  #pstatus { font-weight:600; white-space:nowrap; }
+  #pdetail { color:#9aa4b2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+  .pbtns { display:flex; gap:6px; margin-left:auto; flex:none; }
+  .pbtns button { width:26px; height:26px; border-radius:50%; border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.08); color:#f5f7fb; cursor:pointer; font:14px/1 system-ui; padding:0;
+    display:inline-grid; place-items:center; }
+  .pbtns button:hover { background:rgba(255,255,255,.18); }
+  .pbtns button:focus-visible { outline:2px solid #4facfe; outline-offset:1px; }
+  .pline { flex:none; height:18px; white-space:nowrap; overflow:hidden; text-overflow:clip; }
+  #cap-user { color:#9aa4b2; }
+  #cap-user:not(:empty)::before { content:'You: '; color:#6b7380; }
+  #cap-jupiter:not(:empty)::before { content:'Jupiter: '; color:#4facfe; }
+  #pchecklist { flex:none; list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:2px; }
+  #pchecklist[hidden] { display:none; }
+  #pchecklist li { display:flex; align-items:center; gap:8px; height:22px; color:#9aa4b2; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  #pchecklist li::before { content:''; width:14px; height:14px; border-radius:50%; border:1.6px solid #5b6472;
+    flex:none; box-sizing:border-box; }
+  #pchecklist li[data-state=active], #pchecklist li[data-state=done] { color:#f5f7fb; }
+  #pchecklist li[data-state=active]::before { border-color:#ffb340; border-top-color:transparent; animation:pspin .9s linear infinite; }
+  #pchecklist li[data-state=done]::before { border:none; background:#3ddc84 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.2 2.2 4.8-4.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat; }
+  #pchecklist li[data-state=failed] { color:#ff5a5f; }
+  #pchecklist li[data-state=failed]::before { border-color:#ff5a5f; }
+  @keyframes pspin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #panel *, #panel > * { animation:none !important; } }
+  #fallback { position:fixed; inset:0; display:none; place-items:center; font-size:38px; }
+  body.no3d #fallback { display:grid; }
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+<div id="fallback" aria-hidden="true">🤖</div>
+<div id="panel" role="status" aria-live="polite" aria-label="Jupiter">
+  <div class="prow"><span class="pdot" aria-hidden="true"></span><span id="pstatus">Jupiter</span><span id="pdetail"></span>
+    <span class="pbtns"><button type="button" data-host="open" title="Open Jupiter" aria-label="Open the Jupiter window">&#8599;</button><button type="button" data-host="collapse" title="Make small" aria-label="Make Juno small">&#8211;</button><button type="button" data-host="hide" title="Hide" aria-label="Hide Juno">&times;</button></span></div>
+  <div class="pline" id="cap-user"></div>
+  <div class="pline" id="cap-jupiter"></div>
+  <ul id="pchecklist" hidden></ul>
+</div>
+<script>
+  if (/[?&]mode=desk\b/.test(location.search)) document.body.classList.add('desk');
+  if (!window.THREE) {
+    document.body.classList.add('no3d');
+    window.setNotch = window.setAstro = window.wakeNotch = function () {};
+    // no WebGL: the Windows overlay window shows just the fallback astronaut in its centre
+    window.addEventListener('pywebviewready', function () {
+      var api = window.pywebview && window.pywebview.api;
+      if (api && api.shape && document.body.classList.contains('desk')) api.shape({ cols: 1, rows: 1, runs: [], rects: [[0.3, 0.3, 0.7, 0.7]] });
+    });
+  }
+</script>
+<script>
+  if (window.THREE) {
+    // =========================================================================
+    // 1. MULTI-MODE WEBAUDIO SYNTHESIZER
+    // =========================================================================
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function playRoboticChirp(type = 'happy') { return;
+      try {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'happy' || type === 'music' || type === 'celebrate' || type === 'love') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, now);
+          osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08);
+          osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.22);
+          gain.gain.setValueAtTime(0.13, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.26);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        } else if (type === 'idea') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, now);
+          osc.frequency.exponentialRampToValueAtTime(1760, now + 0.18);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.26);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        } else if (type === 'coding' || type === 'websearch' || type === 'reading') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(780, now);
+          osc.frequency.setValueAtTime(1120, now + 0.05);
+          osc.frequency.setValueAtTime(960, now + 0.10);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.15);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } else if (type === 'math' || type === 'memory' || type === 'creative') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(587.33, now);
+          osc.frequency.setValueAtTime(880, now + 0.09);
+          osc.frequency.setValueAtTime(1174.66, now + 0.18);
+          gain.gain.setValueAtTime(0.11, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.28);
+          osc.start(now);
+          osc.stop(now + 0.28);
+        } else if (type === 'debugging' || type === 'overload') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(340, now);
+          osc.frequency.linearRampToValueAtTime(180, now + 0.20);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.24);
+          osc.start(now);
+          osc.stop(now + 0.24);
+        } else if (type === 'confused' || type === 'shy') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(680, now + 0.18);
+          gain.gain.setValueAtTime(0.11, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.22);
+          osc.start(now);
+          osc.stop(now + 0.22);
+        } else if (type === 'spin' || type === 'jump' || type === 'charging' || type === 'security') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(280, now);
+          osc.frequency.exponentialRampToValueAtTime(1260, now + 0.36);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.40);
+          osc.start(now);
+          osc.stop(now + 0.40);
+        } else {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.linearRampToValueAtTime(580, now + 0.15);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.18);
+          osc.start(now);
+          osc.stop(now + 0.18);
+        }
+      } catch (e) {}
+    }
+
+    // =========================================================================
+    // 2. THREE.JS SCENE, CAMERA, LIGHTS & RENDERER
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = null;
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0.42, 4.45);
+    camera.lookAt(0, 0.32, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+
+    // Studio Lighting
+    const ambientLight = new THREE.AmbientLight(0x0d1526, 1.85);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    keyLight.position.set(2.2, 4.2, 3.2);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 1024;
+    keyLight.shadow.mapSize.height = 1024;
+    scene.add(keyLight);
+
+    const rimLightLeft = new THREE.DirectionalLight(0x00e5ff, 3.8);
+    rimLightLeft.position.set(-3, 2, -2);
+    scene.add(rimLightLeft);
+
+    const rimLightRight = new THREE.DirectionalLight(0x0077ff, 3.2);
+    rimLightRight.position.set(3, 1, -2);
+    scene.add(rimLightRight);
+
+    const codeScreenLight = new THREE.PointLight(0x00ff88, 0, 2.2);
+    codeScreenLight.position.set(0, 0.25, 0.72);
+    scene.add(codeScreenLight);
+
+    // Floor & Grid
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(12, 12),
+      new THREE.ShadowMaterial({ opacity: 0.45 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1.1;
+    floor.receiveShadow = true;
+    // floor: not shown (model only)
+
+    const gridHelper = new THREE.GridHelper(12, 24, 0x00e5ff, 0x0c1930);
+    gridHelper.position.y = -1.1;
+    gridHelper.material.opacity = 0.24;
+    gridHelper.material.transparent = true;
+    // gridHelper: not shown (model only)
+
+    // =========================================================================
+    // 3. STATIONARY "COMPRESSED 3D" FLUSH JUPITER LOGOS & CYBER-HAND TEXTURE
+    // =========================================================================
+    function createCompressed3DLogoTexture(isChestReactor = false) {
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 512;
+      const ctx = c.getContext('2d');
+      const cx = 256, cy = 256;
+
+      if (isChestReactor) {
+        const rimGrad = ctx.createLinearGradient(60, 60, 450, 450);
+        rimGrad.addColorStop(0, '#526585');
+        rimGrad.addColorStop(0.5, '#1e293b');
+        rimGrad.addColorStop(1, '#090d16');
+        ctx.fillStyle = rimGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 224, 0, Math.PI * 2);
+        ctx.fill();
+
+        const wellGrad = ctx.createRadialGradient(cx + 12, cy + 12, 30, cx, cy, 206);
+        wellGrad.addColorStop(0, '#091326');
+        wellGrad.addColorStop(0.82, '#050a14');
+        wellGrad.addColorStop(1, '#020409');
+        ctx.fillStyle = wellGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 206, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.shadowColor = '#00e5ff';
+        ctx.shadowBlur = 24;
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 22;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 194, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e0fbff';
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 194, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Perfect Circular Forehead Badge Housing
+        const bezelGrad = ctx.createLinearGradient(60, 60, 450, 450);
+        bezelGrad.addColorStop(0, '#526585');
+        bezelGrad.addColorStop(0.5, '#1e293b');
+        bezelGrad.addColorStop(1, '#090d16');
+        ctx.fillStyle = bezelGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 220, 0, Math.PI * 2);
+        ctx.fill();
+
+        const innerWell = ctx.createRadialGradient(cx + 10, cy + 10, 24, cx, cy, 200);
+        innerWell.addColorStop(0, '#0a1528');
+        innerWell.addColorStop(0.85, '#060b16');
+        innerWell.addColorStop(1, '#02050b');
+        ctx.fillStyle = innerWell;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 200, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.shadowColor = '#00e5ff';
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 194, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e0fbff';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 194, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const planetR = isChestReactor ? 80 : 82;
+      const ringRx = isChestReactor ? 146 : 150;
+      const ringRy = isChestReactor ? 44 : 45;
+      const tilt = -0.38;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(tilt);
+
+      ctx.save();
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 16;
+      ctx.strokeStyle = '#00b8ff';
+      ctx.lineWidth = 22;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, ringRx, ringRy, 0, Math.PI, Math.PI * 2, false);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#bceeff';
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, ringRx, ringRy, 0, Math.PI, Math.PI * 2, false);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 24;
+      ctx.beginPath();
+      ctx.arc(0, 0, planetR, 0, Math.PI * 2);
+      ctx.clip();
+
+      const sphereGrad = ctx.createRadialGradient(
+        -planetR * 0.35, -planetR * 0.35, planetR * 0.08,
+        0, 0, planetR
+      );
+      sphereGrad.addColorStop(0, '#ffffff');
+      sphereGrad.addColorStop(0.25, '#88f7ff');
+      sphereGrad.addColorStop(0.65, '#00d2ff');
+      sphereGrad.addColorStop(1, '#003b7a');
+      ctx.fillStyle = sphereGrad;
+      ctx.fillRect(-planetR, -planetR, planetR * 2, planetR * 2);
+
+      ctx.fillStyle = 'rgba(0, 35, 85, 0.28)';
+      ctx.fillRect(-planetR, -planetR * 0.38, planetR * 2, planetR * 0.20);
+      ctx.fillRect(-planetR, planetR * 0.12, planetR * 2, planetR * 0.16);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = '#050a14';
+      ctx.lineWidth = 34;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, ringRx, ringRy, 0, -0.12, Math.PI + 0.12, false);
+      ctx.stroke();
+
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 22;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, ringRx, ringRy, 0, 0, Math.PI, false);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#f0fcff';
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, ringRx, ringRy, 0, 0, Math.PI, false);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.restore();
+      return new THREE.CanvasTexture(c);
+    }
+
+    function createCyberHandTexture() {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 256;
+      const ctx = c.getContext('2d');
+
+      ctx.fillStyle = '#182234';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.14)';
+      ctx.lineWidth = 1.5;
+      for (let y = 0; y < 256; y += 16) {
+        for (let x = 0; x < 256; x += 16) {
+          ctx.strokeRect(x + 2, y + 2, 12, 12);
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.65)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(20, 90);
+      ctx.lineTo(100, 115);
+      ctx.lineTo(156, 115);
+      ctx.lineTo(236, 90);
+      ctx.moveTo(40, 175);
+      ctx.lineTo(128, 150);
+      ctx.lineTo(216, 175);
+      ctx.stroke();
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    // =========================================================================
+    // 4. ZERO-LAG OLED VISOR CANVAS (Now with Question-Mark `? ?` Confused Eyes!)
+    // =========================================================================
+    const faceCanvas = document.createElement('canvas');
+    faceCanvas.width = 512;
+    faceCanvas.height = 512;
+    const faceCtx = faceCanvas.getContext('2d');
+    const faceTexture = new THREE.CanvasTexture(faceCanvas);
+
+    let buddyMood = 'idle';
+    let browOverride = 'auto';
+    let eyeScaleY = 1.0;
+    let eyeBlinkTimer = 0;
+    let eyeGazeX = 0;
+    let eyeGazeY = 0;
+
+    const browState = {
+      leftY: -4, rightY: -4,
+      leftRot: -0.04, rightRot: 0.04,
+      arch: 14,
+      leftEyeH: 74, rightEyeH: 74
+    };
+
+    const moodColorMap = {
+      idle: '#00e5ff',
+      listening: '#38bdf8',
+      thinking: '#ff9d42',
+      speaking: '#00ff88',
+      happy: '#38bdf8',
+      sleep: '#64748b',
+      coding: '#00ff88',
+      math: '#facc15',
+      websearch: '#38bdf8',
+      reading: '#2dd4bf',
+      memory: '#c084fc',
+      creative: '#f472b6',
+      scanning: '#00e5ff',
+      debugging: '#f43f5e',
+      working: '#38bdf8',
+      security: '#10b981',
+      charging: '#fde047',
+      overload: '#ef4444',
+      music: '#c084fc',
+      idea: '#fde047',
+      love: '#fb7185',
+      confused: '#fb923c',
+      shy: '#f472b6',
+      celebrate: '#34d399'
+    };
+
+    function getTargetBrowPose(mood, override, time) {
+      let pose = { leftY: -4, rightY: -4, leftRot: -0.04, rightRot: 0.04, arch: 14, leftEyeH: 74, rightEyeH: 74 };
+
+      if (mood === 'math' || mood === 'thinking' || mood === 'confused') {
+        pose = { leftY: -24, rightY: 6, leftRot: -0.22, rightRot: 0.16, arch: 18, leftEyeH: 80, rightEyeH: 48 };
+      } else if (mood === 'coding' || mood === 'working' || mood === 'security') {
+        pose = { leftY: 6, rightY: 6, leftRot: 0.22, rightRot: -0.22, arch: 8, leftEyeH: 62, rightEyeH: 62 };
+      } else if (mood === 'debugging' || mood === 'overload') {
+        pose = { leftY: 10, rightY: -18, leftRot: 0.28, rightRot: 0.16, arch: 14, leftEyeH: 56, rightEyeH: 78 };
+      } else if (mood === 'happy' || mood === 'music' || mood === 'celebrate' || mood === 'love') {
+        pose = {
+          leftY: -16 + Math.sin(time * 5) * 3,
+          rightY: -16 + Math.sin(time * 5) * 3,
+          leftRot: -0.10, rightRot: 0.10, arch: 22, leftEyeH: 74, rightEyeH: 74
+        };
+      } else if (mood === 'listening' || mood === 'idea' || mood === 'charging') {
+        pose = { leftY: -20, rightY: -20, leftRot: -0.08, rightRot: 0.08, arch: 22, leftEyeH: 84, rightEyeH: 84 };
+      } else if (mood === 'websearch' || mood === 'reading' || mood === 'memory' || mood === 'creative') {
+        pose = { leftY: -12, rightY: -12, leftRot: -0.06, rightRot: 0.06, arch: 18, leftEyeH: 78, rightEyeH: 78 };
+      } else if (mood === 'shy') {
+        pose = { leftY: -8, rightY: -8, leftRot: -0.22, rightRot: 0.22, arch: 12, leftEyeH: 64, rightEyeH: 64 };
+      } else if (mood === 'sleep') {
+        pose = { leftY: 12, rightY: 12, leftRot: -0.10, rightRot: 0.10, arch: 6, leftEyeH: 74, rightEyeH: 74 };
+      }
+
+      if (override === 'one-brow') {
+        pose.leftY = -25; pose.rightY = 6; pose.leftRot = -0.22; pose.rightRot = 0.14; pose.arch = 20;
+        pose.leftEyeH = 80; pose.rightEyeH = 48;
+      } else if (override === 'focused') {
+        pose.leftY = 8; pose.rightY = 8; pose.leftRot = 0.26; pose.rightRot = -0.26; pose.arch = 6;
+      } else if (override === 'arched') {
+        pose.leftY = -20; pose.rightY = -20; pose.leftRot = -0.08; pose.rightRot = 0.08; pose.arch = 22;
+      }
+
+      return pose;
+    }
+
+    function drawEyebrow(ctx, cx, cy, width, rotation, archHeight, color) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rotation);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-width / 2, 0);
+      ctx.quadraticCurveTo(0, -archHeight, width / 2, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Crisp Vector Question-Mark Eye (`?`) for Confused Mode!
+    function drawQuestionMarkEye(ctx, cx, cy, scale, tilt, color) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(tilt);
+      ctx.scale(scale, scale);
+
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 15;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Top hook and stem of the '?'
+      ctx.beginPath();
+      ctx.arc(0, -18, 22, Math.PI * 0.88, Math.PI * 2.15, false);
+      ctx.quadraticCurveTo(20, 2, 0, 10);
+      ctx.lineTo(0, 20);
+      ctx.stroke();
+
+      // Glowing bottom dot of the '?'
+      ctx.beginPath();
+      ctx.arc(0, 40, 8.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawHeartShape(ctx, cx, cy, size, color) {
+      ctx.save();
+      ctx.translate(cx, cy - size * 0.3);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(0, size * 0.25);
+      ctx.bezierCurveTo(0, 0, -size, 0, -size, size * 0.45);
+      ctx.bezierCurveTo(-size, size * 0.9, 0, size * 1.15, 0, size * 1.4);
+      ctx.bezierCurveTo(0, size * 1.15, size, size * 0.9, size, size * 0.45);
+      ctx.bezierCurveTo(size, 0, 0, 0, 0, size * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawFourPointStar(ctx, cx, cy, outerR, innerR, color) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const r = (i % 2 === 0) ? outerR : innerR;
+        const a = (i * Math.PI) / 4;
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSpiralEye(ctx, cx, cy, maxR, phase, color) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(phase);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let t = 0; t < Math.PI * 4.2; t += 0.28) {
+        const r = (t / (Math.PI * 4.2)) * maxR;
+        const x = Math.cos(t) * r;
+        const y = Math.sin(t) * r;
+        if (t === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function updateFaceTexture(time) {
+      faceCtx.clearRect(0, 0, 512, 512);
+
+      faceCtx.save();
+      drawRoundedRect(faceCtx, 16, 28, 480, 456, 170);
+      faceCtx.clip();
+
+      // Deep OLED black visor background
+      faceCtx.fillStyle = '#030611';
+      faceCtx.fillRect(0, 0, 512, 512);
+
+      // Recessed dark metallic inner bezel border
+      faceCtx.strokeStyle = '#141c2e';
+      faceCtx.lineWidth = 18;
+      faceCtx.stroke();
+
+      const glowColor = moodColorMap[buddyMood] || '#00e5ff';
+
+      // Eye Gaze Offsets per Task
+      let gazeOffsetX = eyeGazeX * 22;
+      let gazeOffsetY = eyeGazeY * 15;
+      if (buddyMood === 'coding') {
+        gazeOffsetX = Math.sin(time * 6.5) * 16;
+        gazeOffsetY = 8;
+      } else if (buddyMood === 'reading') {
+        const readSweep = ((time * 1.2) % 1) * 2 - 1;
+        gazeOffsetX = readSweep * 22;
+        gazeOffsetY = 12;
+      } else if (buddyMood === 'creative') {
+        gazeOffsetX = Math.cos(time * 3.2) * 22;
+        gazeOffsetY = Math.sin(time * 6.4) * 14;
+      } else if (buddyMood === 'websearch') {
+        gazeOffsetX = Math.sin(time * 4.5) * 20;
+        gazeOffsetY = Math.cos(time * 3.0) * 10;
+      } else if (buddyMood === 'scanning') {
+        gazeOffsetX = Math.sin(time * 2.2) * 18;
+        gazeOffsetY = Math.cos(time * 1.5) * 10;
+      } else if (buddyMood === 'shy') {
+        gazeOffsetX = 14;
+        gazeOffsetY = 18;
+      }
+
+      const leftEyeX = 176 + gazeOffsetX;
+      const rightEyeX = 336 + gazeOffsetX;
+      const eyeY = 236 + gazeOffsetY;
+
+      // 1. Render Eyebrows
+      const targetBrow = getTargetBrowPose(buddyMood, browOverride, time);
+      browState.leftY += (targetBrow.leftY - browState.leftY) * 0.16;
+      browState.rightY += (targetBrow.rightY - browState.rightY) * 0.16;
+      browState.leftRot += (targetBrow.leftRot - browState.leftRot) * 0.16;
+      browState.rightRot += (targetBrow.rightRot - browState.rightRot) * 0.16;
+      browState.arch += (targetBrow.arch - browState.arch) * 0.16;
+      browState.leftEyeH += (targetBrow.leftEyeH - browState.leftEyeH) * 0.18;
+      browState.rightEyeH += (targetBrow.rightEyeH - browState.rightEyeH) * 0.18;
+
+      faceCtx.shadowColor = glowColor;
+      faceCtx.shadowBlur = 14;
+      drawEyebrow(faceCtx, leftEyeX, eyeY - 62 + browState.leftY, 64, browState.leftRot, browState.arch, glowColor);
+      drawEyebrow(faceCtx, rightEyeX, eyeY - 62 + browState.rightY, 64, browState.rightRot, browState.arch, glowColor);
+
+      // 2. Render Eyes Based on Mood
+      faceCtx.fillStyle = glowColor;
+      faceCtx.strokeStyle = glowColor;
+      faceCtx.lineWidth = 18;
+
+      if (buddyMood === 'happy' || buddyMood === 'music' || buddyMood === 'celebrate') {
+        const bobY = (buddyMood === 'music' || buddyMood === 'celebrate') ? Math.sin(time * 8) * 5 : 0;
+        faceCtx.lineWidth = 22;
+        faceCtx.beginPath();
+        faceCtx.arc(leftEyeX, eyeY + 16 + bobY, 42, Math.PI * 1.15, Math.PI * 1.85, false);
+        faceCtx.stroke();
+        faceCtx.beginPath();
+        faceCtx.arc(rightEyeX, eyeY + 16 + bobY, 42, Math.PI * 1.15, Math.PI * 1.85, false);
+        faceCtx.stroke();
+      } else if (buddyMood === 'confused') {
+        // ANIMATED GLOWING QUESTION-MARK EYES (`? ?`) FOR CONFUSED MODE!
+        const leftScale = 1.06 + Math.sin(time * 5.5) * 0.08;
+        const rightScale = 0.90 - Math.sin(time * 5.5) * 0.08;
+        const leftTilt = -0.12 + Math.sin(time * 4.5) * 0.14;
+        const rightTilt = 0.12 + Math.cos(time * 4.5) * 0.14;
+
+        drawQuestionMarkEye(faceCtx, leftEyeX, eyeY, leftScale, leftTilt, glowColor);
+        drawQuestionMarkEye(faceCtx, rightEyeX, eyeY, rightScale, rightTilt, glowColor);
+      } else if (buddyMood === 'love') {
+        const pulse = 36 + Math.sin(time * 9) * 5;
+        drawHeartShape(faceCtx, leftEyeX, eyeY, pulse, '#fb7185');
+        drawHeartShape(faceCtx, rightEyeX, eyeY, pulse, '#fb7185');
+      } else if (buddyMood === 'idea' || buddyMood === 'creative' || buddyMood === 'charging') {
+        const hL = Math.max(8, browState.leftEyeH * eyeScaleY);
+        const w = 64;
+        drawRoundedRect(faceCtx, leftEyeX - w / 2, eyeY - hL / 2, w, hL, 31);
+        drawRoundedRect(faceCtx, rightEyeX - w / 2, eyeY - hL / 2, w, hL, 31);
+        if (eyeScaleY > 0.4) {
+          faceCtx.shadowBlur = 0;
+          const starScale = 19 + Math.sin(time * 10) * 4;
+          drawFourPointStar(faceCtx, leftEyeX, eyeY, starScale, starScale * 0.35, '#ffffff');
+          drawFourPointStar(faceCtx, rightEyeX, eyeY, starScale, starScale * 0.35, '#ffffff');
+          faceCtx.shadowBlur = 14;
+        }
+      } else if (buddyMood === 'overload') {
+        drawSpiralEye(faceCtx, leftEyeX, eyeY, 42, time * 7, '#ef4444');
+        drawSpiralEye(faceCtx, rightEyeX, eyeY, 42, -time * 7, '#ef4444');
+      } else if (buddyMood === 'sleep') {
+        faceCtx.lineWidth = 16;
+        faceCtx.beginPath();
+        faceCtx.arc(leftEyeX, eyeY - 5, 36, Math.PI * 0.15, Math.PI * 0.85, false);
+        faceCtx.stroke();
+        faceCtx.beginPath();
+        faceCtx.arc(rightEyeX, eyeY - 5, 36, Math.PI * 0.15, Math.PI * 0.85, false);
+        faceCtx.stroke();
+
+        faceCtx.font = 'bold 26px sans-serif';
+        faceCtx.fillText('Z', 372, 165 - ((time * 22) % 35));
+        faceCtx.font = 'bold 18px sans-serif';
+        faceCtx.fillText('z', 402, 140 - ((time * 22) % 35));
+      } else {
+        const hL = Math.max(8, browState.leftEyeH * eyeScaleY);
+        const hR = Math.max(8, browState.rightEyeH * eyeScaleY);
+        const w = 62;
+        drawRoundedRect(faceCtx, leftEyeX - w / 2, eyeY - hL / 2, w, hL, Math.min(31, hL / 2));
+        drawRoundedRect(faceCtx, rightEyeX - w / 2, eyeY - hR / 2, w, hR, Math.min(31, hR / 2));
+      }
+
+      // Rosy Glowing Cheek Blushes
+      if (['happy', 'music', 'love', 'shy', 'celebrate', 'creative'].includes(buddyMood)) {
+        faceCtx.save();
+        faceCtx.shadowBlur = 0;
+        const alpha = (buddyMood === 'shy' || buddyMood === 'love') ? 0.55 : 0.38;
+        faceCtx.fillStyle = `rgba(244, 114, 182, ${alpha})`;
+        faceCtx.beginPath();
+        faceCtx.ellipse(leftEyeX - 36, eyeY + 48, 24, 12, 0, 0, Math.PI * 2);
+        faceCtx.ellipse(rightEyeX + 36, eyeY + 48, 24, 12, 0, 0, Math.PI * 2);
+        faceCtx.fill();
+        faceCtx.restore();
+      }
+
+      // 3. Render Mouth
+      faceCtx.shadowColor = glowColor;
+      faceCtx.shadowBlur = 12;
+      faceCtx.strokeStyle = glowColor;
+      faceCtx.fillStyle = glowColor;
+      faceCtx.lineWidth = 13;
+
+      if (buddyMood === 'speaking') {
+        const mx = 256 + gazeOffsetX * 0.35;
+        const my = 326 + gazeOffsetY * 0.35;
+        const syllableOpen = Math.max(0.08, (Math.sin(time * 13) * 0.5 + 0.5) * (0.65 + 0.35 * Math.cos(time * 7.3)));
+        const mouthW = 36 + Math.sin(time * 9) * 8;
+        const openH = 4 + syllableOpen * 32;
+
+        faceCtx.save();
+        faceCtx.fillStyle = 'rgba(0, 255, 136, 0.25)';
+        faceCtx.beginPath();
+        faceCtx.moveTo(mx - mouthW, my);
+        faceCtx.quadraticCurveTo(mx, my - openH * 0.35, mx + mouthW, my);
+        faceCtx.quadraticCurveTo(mx, my + openH * 1.15, mx - mouthW, my);
+        faceCtx.closePath();
+        faceCtx.fill();
+        faceCtx.strokeStyle = glowColor;
+        faceCtx.lineWidth = 12;
+        faceCtx.lineCap = 'round';
+        faceCtx.lineJoin = 'round';
+        faceCtx.stroke();
+        faceCtx.restore();
+      } else if (buddyMood === 'music' || buddyMood === 'celebrate' || buddyMood === 'idea' || buddyMood === 'creative') {
+        const mx = 256 + gazeOffsetX * 0.25;
+        const my = 318 + Math.sin(time * 8) * 3;
+        faceCtx.lineWidth = 12;
+        faceCtx.beginPath();
+        faceCtx.moveTo(mx - 36, my);
+        faceCtx.quadraticCurveTo(mx, my + 6, mx + 36, my);
+        faceCtx.quadraticCurveTo(mx, my + 38, mx - 36, my);
+        faceCtx.closePath();
+        faceCtx.fillStyle = 'rgba(255, 255, 255, 0.20)';
+        faceCtx.fill();
+        faceCtx.stroke();
+      } else if (buddyMood === 'listening') {
+        faceCtx.beginPath();
+        faceCtx.arc(256 + gazeOffsetX * 0.4, 306 + gazeOffsetY * 0.4, 30, Math.PI * 0.20, Math.PI * 0.80, false);
+        faceCtx.stroke();
+      } else if (buddyMood === 'overload' || buddyMood === 'shy' || buddyMood === 'confused') {
+        faceCtx.beginPath();
+        faceCtx.moveTo(216, 330);
+        faceCtx.quadraticCurveTo(236, 344, 256, 328);
+        faceCtx.quadraticCurveTo(276, 344, 296, 330);
+        faceCtx.stroke();
+      } else if (buddyMood === 'coding' || buddyMood === 'thinking' || buddyMood === 'math' || buddyMood === 'security') {
+        faceCtx.beginPath();
+        faceCtx.moveTo(228, 330);
+        faceCtx.quadraticCurveTo(256, 336, 286, 320);
+        faceCtx.stroke();
+      } else if (buddyMood === 'debugging') {
+        faceCtx.beginPath();
+        faceCtx.arc(256, 342, 22, Math.PI * 1.18, Math.PI * 1.82, false);
+        faceCtx.stroke();
+      } else if (buddyMood === 'sleep') {
+        const r = 9 + Math.sin(time * 2.5) * 2.5;
+        faceCtx.beginPath();
+        faceCtx.arc(256, 334, r, 0, Math.PI * 2);
+        faceCtx.stroke();
+      } else {
+        faceCtx.beginPath();
+        faceCtx.arc(256 + gazeOffsetX * 0.4, 304 + gazeOffsetY * 0.4, 32, Math.PI * 0.2, Math.PI * 0.8, false);
+        faceCtx.stroke();
+      }
+
+      // 4. LOWER VISOR REFLECTIONS
+      if (buddyMood === 'coding') {
+        faceCtx.save();
+        faceCtx.shadowBlur = 0;
+        const shineGrad = faceCtx.createLinearGradient(0, 320, 0, 480);
+        shineGrad.addColorStop(0, 'rgba(0, 255, 136, 0)');
+        shineGrad.addColorStop(1, 'rgba(0, 255, 136, 0.26)');
+        faceCtx.fillStyle = shineGrad;
+        faceCtx.fillRect(40, 320, 432, 160);
+
+        faceCtx.translate(256, 395);
+        faceCtx.scale(-1, 1);
+        faceCtx.font = 'bold 13px monospace';
+        faceCtx.fillStyle = 'rgba(167, 243, 208, 0.65)';
+        const refLines = [
+          'const model = await jupiter.compile(ast);',
+          'for (let node of graph.tensors) { sync(); }',
+          'return Response.json({ status: "OPTIMAL" });'
+        ];
+        const scrollOffset = (time * 24) % 18;
+        refLines.forEach((ln, idx) => {
+          faceCtx.fillText(ln, -145, -18 + idx * 18 - scrollOffset * 0.3);
+        });
+        faceCtx.restore();
+      } else if (buddyMood === 'charging') {
+        faceCtx.shadowBlur = 0;
+        faceCtx.font = 'bold 17px monospace';
+        const chargePct = Math.min(100, 85 + Math.floor((time * 8) % 16));
+        faceCtx.fillText(`[ POWER CORE: ${chargePct}% ]`, 158, 392);
+      } else if (buddyMood === 'security') {
+        faceCtx.shadowBlur = 0;
+        faceCtx.font = 'bold 16px monospace';
+        faceCtx.fillText('[ FIREWALL: ENFORCED ]', 148, 392);
+      }
+
+      faceCtx.restore();
+      faceTexture.needsUpdate = true;
+    }
+
+    function drawRoundedRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // =========================================================================
+    // 5. BUILD 3D JUPITER BUDDY HIERARCHY (With True-Circle Forehead Patch!)
+    // =========================================================================
+    const buddyGroup = new THREE.Group();
+    scene.add(buddyGroup);
+
+    const metalMat = new THREE.MeshStandardMaterial({
+      color: 0x2b3548,
+      metalness: 0.55,
+      roughness: 0.26
+    });
+
+    const darkTrimMat = new THREE.MeshStandardMaterial({
+      color: 0x101520,
+      metalness: 0.50,
+      roughness: 0.38
+    });
+
+    const handTechMat = new THREE.MeshStandardMaterial({
+      map: createCyberHandTexture(),
+      color: 0xdbeafe,
+      metalness: 0.58,
+      roughness: 0.30
+    });
+
+    const cyanGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x00e5ff,
+      emissive: 0x00d8ff,
+      emissiveIntensity: 1.6,
+      roughness: 0.18
+    });
+
+    const magentaGlowMat = new THREE.MeshStandardMaterial({
+      color: 0xe879f9,
+      emissive: 0xc084fc,
+      emissiveIntensity: 1.8,
+      roughness: 0.18
+    });
+
+    const visorMat = new THREE.MeshStandardMaterial({
+      map: faceTexture,
+      transparent: true,
+      alphaTest: 0.05,
+      roughness: 0.08,
+      metalness: 0.15,
+      emissive: 0xffffff,
+      emissiveMap: faceTexture,
+      emissiveIntensity: 0.95
+    });
+
+    function createNormalizedSpherePatch(radius, phiStart, phiLength, thetaStart, thetaLength) {
+      const geo = new THREE.SphereGeometry(radius, 40, 32, phiStart, phiLength, thetaStart, thetaLength);
+      const uv = geo.attributes.uv;
+      let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+      for (let i = 0; i < uv.count; i++) {
+        const u = uv.getX(i), v = uv.getY(i);
+        if (u < uMin) uMin = u; if (u > uMax) uMax = u;
+        if (v < vMin) vMin = v; if (v > vMax) vMax = v;
+      }
+      for (let i = 0; i < uv.count; i++) {
+        uv.setXY(i, (uv.getX(i) - uMin) / (uMax - uMin), (uv.getY(i) - vMin) / (vMax - vMin));
+      }
+      uv.needsUpdate = true;
+      return geo;
+    }
+
+    // Helper: Creates a 100% True Circular Flush Patch on an Ellipsoid Surface (Zero Polar/Oval Distortion!)
+    // Projects a flat orthonormal tangent disk of radius `patchRadius` directly onto the ellipsoid `(rx, ry, rz)`.
+    function createFlushCircularPatch(rx, ry, rz, thetaCenter, patchRadius, segments = 32) {
+      const geo = new THREE.PlaneGeometry(2 * patchRadius, 2 * patchRadius, segments, segments);
+      const pos = geo.attributes.position;
+
+      // Center point P0 on the ellipsoid at angle `thetaCenter` from the +Y top pole in the Y-Z plane
+      const p0y = ry * Math.cos(thetaCenter);
+      const p0z = rz * Math.sin(thetaCenter);
+
+      // Outward unit surface normal N at P0
+      let ny = Math.cos(thetaCenter) / ry;
+      let nz = Math.sin(thetaCenter) / rz;
+      const nLen = Math.hypot(ny, nz);
+      ny /= nLen;
+      nz /= nLen;
+
+      // Orthonormal tangent basis vectors on the forehead:
+      // Tu = (1, 0, 0) (horizontal), Tv = (0, nz, -ny) (upward along forehead meridian)
+      const tvy = nz;
+      const tvz = -ny;
+
+      for (let i = 0; i < pos.count; i++) {
+        const du = pos.getX(i); // [-patchRadius, +patchRadius]
+        const dv = pos.getY(i); // [-patchRadius, +patchRadius]
+
+        // Point Q on the tangent plane
+        const qx = du;
+        const qy = p0y + dv * tvy;
+        const qz = p0z + dv * tvz;
+
+        // Project Q radially onto the exact ellipsoid surface: (vx/rx)^2 + (vy/ry)^2 + (vz/rz)^2 = 1
+        const k = 1 / Math.sqrt((qx / rx) ** 2 + (qy / ry) ** 2 + (qz / rz) ** 2);
+        pos.setXYZ(i, k * qx, k * qy, k * qz);
+      }
+
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function createLimbSegment(rStart, rEnd, length, material) {
+      const g = new THREE.Group();
+      const absLen = Math.abs(length);
+      const sign = length >= 0 ? 1 : -1;
+      const rTop = sign > 0 ? rEnd : rStart;
+      const rBot = sign > 0 ? rStart : rEnd;
+
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, absLen, 24), material);
+      cyl.position.y = length / 2;
+      cyl.castShadow = true;
+      g.add(cyl);
+
+      const capEnd = new THREE.Mesh(new THREE.SphereGeometry(rEnd, 20, 16), material);
+      capEnd.position.y = length;
+      g.add(capEnd);
+
+      return g;
+    }
+
+    // -------------------------------------------------------------------------
+    // A. HEAD & HELMET + TRUE-CIRCLE FLUSH FOREHEAD LOGO
+    // -------------------------------------------------------------------------
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 0.48, 0);
+    headGroup.scale.set(1.22, 1.22, 1.22);
+    buddyGroup.add(headGroup);
+
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.50, 48, 36), metalMat);
+    helmet.scale.set(1.12, 0.94, 1.0);
+    helmet.castShadow = true;
+    headGroup.add(helmet);
+
+    const visorGeo = createNormalizedSpherePatch(
+      0.502,
+      Math.PI * 0.16, Math.PI * 0.68,
+      Math.PI * 0.25, Math.PI * 0.50
+    );
+    const visor = new THREE.Mesh(visorGeo, visorMat);
+    visor.scale.set(1.12, 0.94, 1.0);
+    headGroup.add(visor);
+
+    // 100% TRUE CIRCULAR FLUSH FOREHEAD LOGO (Projected onto exact helmet ellipsoid `0.503 * (1.12, 0.94, 1.0)`)
+    const foreheadTex = createCompressed3DLogoTexture(false);
+    const foreheadMat = new THREE.MeshBasicMaterial({
+      map: foreheadTex,
+      transparent: true,
+      depthWrite: false
+    });
+    const foreheadCircularGeo = createFlushCircularPatch(
+      0.503 * 1.12,
+      0.503 * 0.94,
+      0.503 * 1.00,
+      Math.PI * 0.165, // Centered cleanly on the forehead above the visor
+      0.082            // Equal physical radius horizontally and vertically -> 100% True Circle!
+    );
+    const foreheadLogo = new THREE.Mesh(foreheadCircularGeo, foreheadMat);
+    headGroup.add(foreheadLogo);
+
+    // Base Helmet Earcups
+    const helmetEarRings = [];
+    [-1, 1].forEach(dir => {
+      const earGroup = new THREE.Group();
+      earGroup.position.set(dir * 0.54, -0.01, 0.0);
+      earGroup.rotation.z = dir * (-Math.PI / 2 + 0.06);
+
+      const earBase = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.21, 0.09, 32), darkTrimMat);
+      earGroup.add(earBase);
+
+      const cupOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.11, 32), metalMat);
+      cupOuter.position.y = 0.02;
+      earGroup.add(cupOuter);
+
+      const cupRing = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.018, 16, 32), cyanGlowMat);
+      cupRing.rotation.x = Math.PI / 2;
+      cupRing.position.y = 0.075;
+      earGroup.add(cupRing);
+      helmetEarRings.push(cupRing);
+
+      headGroup.add(earGroup);
+    });
+
+    // -------------------------------------------------------------------------
+    // A1. EAR-LOCKED LISTENING SOUNDWAVES
+    // -------------------------------------------------------------------------
+    const listeningWavesGroup = new THREE.Group();
+    listeningWavesGroup.position.set(0, -0.01, 0);
+    listeningWavesGroup.visible = false;
+    headGroup.add(listeningWavesGroup);
+
+    const soundWaveRings = [];
+    for (let i = 0; i < 3; i++) {
+      const waveRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.14, 0.008, 12, 32),
+        new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.85 })
+      );
+      waveRing.rotation.y = Math.PI / 2;
+      listeningWavesGroup.add(waveRing);
+      soundWaveRings.push(waveRing);
+    }
+
+    // -------------------------------------------------------------------------
+    // A2. ANIMATED STUDIO DJ HEADPHONES
+    // -------------------------------------------------------------------------
+    const djHeadphonesGroup = new THREE.Group();
+    djHeadphonesGroup.position.set(0, -0.01, 0);
+    djHeadphonesGroup.rotation.x = -1.45;
+    djHeadphonesGroup.scale.setScalar(0.01);
+    headGroup.add(djHeadphonesGroup);
+
+    const headbandArch = new THREE.Mesh(
+      new THREE.TorusGeometry(0.545, 0.032, 16, 48, Math.PI),
+      darkTrimMat
+    );
+    headbandArch.scale.set(1.06, 0.91, 1.0);
+    djHeadphonesGroup.add(headbandArch);
+
+    const headbandGlowArch = new THREE.Mesh(
+      new THREE.TorusGeometry(0.562, 0.012, 12, 48, Math.PI * 0.86),
+      magentaGlowMat
+    );
+    headbandGlowArch.rotation.z = Math.PI * 0.07;
+    headbandGlowArch.scale.set(1.06, 0.91, 1.0);
+    djHeadphonesGroup.add(headbandGlowArch);
+
+    const djCups = [];
+    [-1, 1].forEach(dir => {
+      const djCup = new THREE.Group();
+      djCup.position.set(dir * 0.59, 0.0, 0.0);
+      djCup.rotation.z = dir * (-Math.PI / 2);
+
+      const cushion = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.045, 16, 32), darkTrimMat);
+      cushion.rotation.x = Math.PI / 2;
+      djCup.add(cushion);
+
+      const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.20, 0.12, 32), metalMat);
+      shell.position.y = 0.04;
+      djCup.add(shell);
+
+      const neonRing = new THREE.Mesh(new THREE.TorusGeometry(0.165, 0.022, 16, 32), magentaGlowMat);
+      neonRing.rotation.x = Math.PI / 2;
+      neonRing.position.y = 0.105;
+      djCup.add(neonRing);
+
+      djHeadphonesGroup.add(djCup);
+      djCups.push(neonRing);
+    });
+
+    // -------------------------------------------------------------------------
+    // A3. DUAL EYE-MOUNTED VISION SCANNER BEAMS
+    // -------------------------------------------------------------------------
+    const eyeScannerGroup = new THREE.Group();
+    eyeScannerGroup.position.set(0, -0.02, 0.46);
+    eyeScannerGroup.visible = false;
+    headGroup.add(eyeScannerGroup);
+
+    const eyeBeamCones = [];
+    [-0.145, 0.145].forEach(eyeX => {
+      const eyeLensRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.045, 0.062, 24),
+        new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide })
+      );
+      eyeLensRing.position.set(eyeX, 0, 0.04);
+      eyeScannerGroup.add(eyeLensRing);
+
+      const coneGeo = new THREE.ConeGeometry(0.24, 0.95, 28, 1, true);
+      coneGeo.translate(0, -0.475, 0);
+      coneGeo.rotateX(-Math.PI / 2);
+
+      const coneMesh = new THREE.Mesh(
+        coneGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0x00e5ff,
+          transparent: true,
+          opacity: 0.22,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        })
+      );
+      coneMesh.position.set(eyeX, 0, 0.04);
+      eyeScannerGroup.add(coneMesh);
+      eyeBeamCones.push(coneMesh);
+    });
+
+    const scanProjectionPlane = new THREE.Group();
+    scanProjectionPlane.position.set(0, 0, 0.98);
+    eyeScannerGroup.add(scanProjectionPlane);
+
+    const scanFrame = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.PlaneGeometry(0.78, 0.46)),
+      new THREE.LineBasicMaterial({ color: 0x00e5ff })
+    );
+    scanProjectionPlane.add(scanFrame);
+
+    const scanReticleRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.14, 0.165, 32),
+      new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide })
+    );
+    scanProjectionPlane.add(scanReticleRing);
+
+    const scanLaserLine = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.76, 0.022),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    scanProjectionPlane.add(scanLaserLine);
+
+    // -------------------------------------------------------------------------
+    // A4. EUREKA LIGHTBULB & MEMORY CROWN
+    // -------------------------------------------------------------------------
+    const ideaBulbGroup = new THREE.Group();
+    ideaBulbGroup.position.set(0, 0.64, 0.05);
+    ideaBulbGroup.visible = false;
+    headGroup.add(ideaBulbGroup);
+
+    const bulbGlass = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0xfde047 })
+    );
+    ideaBulbGroup.add(bulbGlass);
+
+    const bulbHalo = new THREE.Mesh(
+      new THREE.RingGeometry(0.13, 0.18, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
+    );
+    ideaBulbGroup.add(bulbHalo);
+
+    const bulbBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.045, 0.07, 16),
+      metalMat
+    );
+    bulbBase.position.y = -0.11;
+    ideaBulbGroup.add(bulbBase);
+
+    for (let i = 0; i < 8; i++) {
+      const ray = new THREE.Mesh(
+        new THREE.BoxGeometry(0.014, 0.065, 0.01),
+        new THREE.MeshBasicMaterial({ color: 0xfde047 })
+      );
+      const a = (i / 8) * Math.PI * 2;
+      ray.position.set(Math.cos(a) * 0.21, Math.sin(a) * 0.21, 0);
+      ray.rotation.z = a + Math.PI / 2;
+      ideaBulbGroup.add(ray);
+    }
+
+    const memoryCrownGroup = new THREE.Group();
+    memoryCrownGroup.position.set(0, 0.15, 0);
+    memoryCrownGroup.visible = false;
+    headGroup.add(memoryCrownGroup);
+
+    const memoryRing1 = new THREE.Mesh(
+      new THREE.TorusGeometry(0.68, 0.005, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0xc084fc })
+    );
+    memoryRing1.rotation.x = Math.PI / 2.2;
+    memoryCrownGroup.add(memoryRing1);
+
+    const memoryRing2 = new THREE.Mesh(
+      new THREE.TorusGeometry(0.72, 0.004, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff })
+    );
+    memoryRing2.rotation.x = -Math.PI / 2.5;
+    memoryCrownGroup.add(memoryRing2);
+
+    const memoryNodes = [];
+    for (let i = 0; i < 8; i++) {
+      const node = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.042, 0),
+        new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xc084fc : 0x00e5ff })
+      );
+      const a = (i / 8) * Math.PI * 2;
+      node.position.set(Math.cos(a) * 0.68, Math.sin(a * 2) * 0.12, Math.sin(a) * 0.68);
+      memoryCrownGroup.add(node);
+      memoryNodes.push(node);
+    }
+
+    // -------------------------------------------------------------------------
+    // B. COMPACT CHIBI TORSO + TRUE-CIRCLE FLUSH CHEST LOGO
+    // -------------------------------------------------------------------------
+    const torsoGroup = new THREE.Group();
+    torsoGroup.position.set(0, -0.22, 0);
+    torsoGroup.scale.set(0.84, 0.84, 0.84);
+    buddyGroup.add(torsoGroup);
+
+    const collarRing = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.018, 12, 32), cyanGlowMat);
+    collarRing.rotation.x = Math.PI / 2;
+    collarRing.position.set(0, 0.26, 0.02);
+    torsoGroup.add(collarRing);
+
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.39, 36, 32), metalMat);
+    chest.scale.set(1.06, 0.88, 0.86);
+    chest.castShadow = true;
+    torsoGroup.add(chest);
+
+    const chestTex = createCompressed3DLogoTexture(true);
+    const chestLogoMat = new THREE.MeshBasicMaterial({
+      map: chestTex,
+      transparent: true,
+      depthWrite: false
+    });
+    const chestCircularGeo = createFlushCircularPatch(
+      0.393 * 1.06,
+      0.393 * 0.88,
+      0.393 * 0.86,
+      Math.PI * 0.48,
+      0.135
+    );
+    const reactorPlanetRing = new THREE.Mesh(chestCircularGeo, chestLogoMat);
+    torsoGroup.add(reactorPlanetRing);
+
+    const waistRing = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.016, 12, 32), cyanGlowMat);
+    waistRing.rotation.x = Math.PI / 2;
+    waistRing.scale.set(1.0, 0.82, 1);
+    waistRing.position.set(0, -0.21, 0);
+    torsoGroup.add(waistRing);
+
+    const pelvis = new THREE.Mesh(new THREE.SphereGeometry(0.32, 32, 24), darkTrimMat);
+    pelvis.scale.set(1.02, 0.58, 0.82);
+    pelvis.position.set(0, -0.27, 0);
+    torsoGroup.add(pelvis);
+
+    // -------------------------------------------------------------------------
+    // C. UPGRADED CYBER-GAUNTLET HANDS & 2-PHALANX ARTICULATED FINGERS
+    // -------------------------------------------------------------------------
+    function createArticulatedArm(sideSign) {
+      const armRoot = new THREE.Group();
+      armRoot.position.set(sideSign * 0.41, 0.08, 0.06);
+      torsoGroup.add(armRoot);
+
+      const shoulderBall = new THREE.Mesh(new THREE.SphereGeometry(0.125, 24, 24), darkTrimMat);
+      armRoot.add(shoulderBall);
+
+      const shoulderRing = new THREE.Mesh(new THREE.TorusGeometry(0.122, 0.018, 12, 28), cyanGlowMat);
+      shoulderRing.rotation.x = Math.PI / 2;
+      shoulderRing.position.y = -0.03;
+      armRoot.add(shoulderRing);
+
+      const upperArm = createLimbSegment(0.095, 0.10, -0.15, metalMat);
+      armRoot.add(upperArm);
+
+      const elbowPivot = new THREE.Group();
+      elbowPivot.position.set(0, -0.15, 0);
+      armRoot.add(elbowPivot);
+
+      const forearm = createLimbSegment(0.105, 0.135, -0.19, metalMat);
+      elbowPivot.add(forearm);
+
+      const wristCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.138, 0.132, 0.035, 24), darkTrimMat);
+      wristCuff.position.y = -0.175;
+      elbowPivot.add(wristCuff);
+
+      const wristRing = new THREE.Mesh(new THREE.TorusGeometry(0.134, 0.016, 12, 24), cyanGlowMat);
+      wristRing.rotation.x = Math.PI / 2;
+      wristRing.position.y = -0.195;
+      elbowPivot.add(wristRing);
+
+      const handPivot = new THREE.Group();
+      handPivot.position.set(0, -0.23, 0);
+      elbowPivot.add(handPivot);
+
+      const palm = new THREE.Mesh(new THREE.SphereGeometry(0.114, 28, 24), handTechMat);
+      palm.scale.set(1.14, 0.96, 0.64);
+      palm.position.set(0, -0.07, 0.01);
+      palm.castShadow = true;
+      handPivot.add(palm);
+
+      const dorsalPlate = new THREE.Mesh(
+        new THREE.SphereGeometry(0.105, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+        metalMat
+      );
+      dorsalPlate.rotation.x = -Math.PI / 2;
+      dorsalPlate.scale.set(1.08, 0.55, 0.90);
+      dorsalPlate.position.set(0, -0.07, -0.025);
+      handPivot.add(dorsalPlate);
+
+      const repulsor = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.012, 12, 24), cyanGlowMat);
+      repulsor.position.set(0, -0.07, 0.082);
+      handPivot.add(repulsor);
+
+      const repulsorLens = new THREE.Mesh(
+        new THREE.CircleGeometry(0.035, 20),
+        new THREE.MeshBasicMaterial({ color: 0xe0fbff })
+      );
+      repulsorLens.position.set(0, -0.07, 0.084);
+      handPivot.add(repulsorLens);
+
+      const fingers = [];
+      const fingerSpecs = [
+        { x: -0.084 * -sideSign, y: -0.135, rotZ: -0.36 * -sideSign, len: -0.086 },
+        { x: -0.029 * -sideSign, y: -0.156, rotZ: -0.11 * -sideSign, len: -0.098 },
+        { x:  0.029 * -sideSign, y: -0.156, rotZ:  0.11 * -sideSign, len: -0.098 },
+        { x:  0.084 * -sideSign, y: -0.135, rotZ:  0.36 * -sideSign, len: -0.086 },
+        { x:  0.106 * -sideSign, y: -0.058, rotZ:  0.86 * -sideSign, len: -0.076 }
+      ];
+
+      fingerSpecs.forEach((f) => {
+        const fingerPivot = new THREE.Group();
+        fingerPivot.position.set(f.x, f.y, 0.016);
+        fingerPivot.rotation.z = f.rotZ;
+
+        const baseKnuckle = new THREE.Mesh(new THREE.SphereGeometry(0.030, 14, 14), darkTrimMat);
+        fingerPivot.add(baseKnuckle);
+
+        const fMesh = createLimbSegment(0.028, 0.024, f.len, metalMat);
+
+        const knuckleRing = new THREE.Mesh(new THREE.TorusGeometry(0.0265, 0.0055, 8, 16), cyanGlowMat);
+        knuckleRing.rotation.x = Math.PI / 2;
+        knuckleRing.position.y = f.len * 0.48;
+        fMesh.add(knuckleRing);
+
+        const tipPad = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 12), cyanGlowMat);
+        tipPad.scale.set(1.0, 1.1, 0.6);
+        tipPad.position.set(0, f.len * 0.92, 0.014);
+        fMesh.add(tipPad);
+
+        fingerPivot.add(fMesh);
+        handPivot.add(fingerPivot);
+        fingers.push(fingerPivot);
+      });
+
+      return { armRoot, elbowPivot, handPivot, fingers, repulsor };
+    }
+
+    const leftSideArm = createArticulatedArm(-1);
+    const rightSideArm = createArticulatedArm(1);
+
+    // -------------------------------------------------------------------------
+    // D. WIDE HEROIC A-STANCE LEGS & BOOTS
+    // -------------------------------------------------------------------------
+    const legs = [];
+    [-1, 1].forEach(dir => {
+      const legGroup = new THREE.Group();
+      legGroup.position.set(dir * 0.22, -0.32, 0);
+      legGroup.rotation.z = dir * 0.18;
+      torsoGroup.add(legGroup);
+
+      const hipRing = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.015, 12, 24), cyanGlowMat);
+      hipRing.rotation.x = Math.PI / 2;
+      legGroup.add(hipRing);
+
+      const thigh = createLimbSegment(0.125, 0.135, -0.18, metalMat);
+      legGroup.add(thigh);
+
+      const kneeRing = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.016, 12, 24), cyanGlowMat);
+      kneeRing.position.set(0, -0.21, 0.13);
+      legGroup.add(kneeRing);
+
+      const shin = createLimbSegment(0.14, 0.175, -0.22, metalMat);
+      shin.position.set(0, -0.18, 0.01);
+      legGroup.add(shin);
+
+      const bootGroup = new THREE.Group();
+      bootGroup.position.set(0, -0.48, 0.07);
+      bootGroup.rotation.z = -dir * 0.18;
+      legGroup.add(bootGroup);
+
+      const bootShell = new THREE.Mesh(new THREE.SphereGeometry(0.195, 28, 20), metalMat);
+      bootShell.scale.set(1.02, 0.62, 1.32);
+      bootShell.castShadow = true;
+      bootGroup.add(bootShell);
+
+      const bootStripe = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.014, 12, 28, Math.PI), cyanGlowMat);
+      bootStripe.rotation.set(0.35, 0, 0);
+      bootStripe.position.set(0, -0.01, 0.07);
+      bootGroup.add(bootStripe);
+
+      const soleGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.02, 28), cyanGlowMat);
+      soleGlow.scale.set(1.0, 1.0, 1.30);
+      soleGlow.position.set(0, -0.10, 0.01);
+      bootGroup.add(soleGlow);
+
+      legs.push({ legGroup, bootGroup, dir });
+    });
+
+    // =========================================================================
+    // 6. FULL SUITE OF 3D TASK HOLOGRAMS & PROPS
+    // =========================================================================
+    const holoRoot = new THREE.Group();
+    buddyGroup.add(holoRoot);
+
+    const palmHoloMount = new THREE.Group();
+    palmHoloMount.position.set(0, -0.07, 0.25);
+    leftSideArm.handPivot.add(palmHoloMount);
+
+    const palmProjectorBeam = new THREE.Mesh(
+      new THREE.ConeGeometry(0.14, 0.16, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+    );
+    palmProjectorBeam.rotation.x = Math.PI / 2;
+    palmProjectorBeam.position.z = -0.08;
+    palmProjectorBeam.visible = false;
+    palmHoloMount.add(palmProjectorBeam);
+
+    // 1. MATHEMATICS HOLOGRAM
+    const mathHoloGroup = new THREE.Group();
+    mathHoloGroup.visible = false;
+    palmHoloMount.add(mathHoloGroup);
+
+    const mathWireIco = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.13, 0),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15, wireframe: true })
+    );
+    mathHoloGroup.add(mathWireIco);
+
+    const mathInnerOcta = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.07, 0),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true })
+    );
+    mathHoloGroup.add(mathInnerOcta);
+
+    const mathGyroRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.18, 0.004, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    mathHoloGroup.add(mathGyroRing);
+
+    // 2. DEBUGGING GLITCH BUG HOLOGRAM
+    const debugHoloGroup = new THREE.Group();
+    debugHoloGroup.visible = false;
+    palmHoloMount.add(debugHoloGroup);
+
+    const bugCube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.15, 0.15),
+      new THREE.MeshBasicMaterial({ color: 0xf43f5e, wireframe: true })
+    );
+    debugHoloGroup.add(bugCube);
+
+    const bugCore = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.065, 0),
+      new THREE.MeshBasicMaterial({ color: 0xff9d42 })
+    );
+    debugHoloGroup.add(bugCore);
+
+    const bugTargetRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.14, 0.004, 12, 36),
+      new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+    );
+    debugHoloGroup.add(bugTargetRing);
+
+    // 3. WEB SEARCH HOLOGRAM
+    const webSearchHoloGroup = new THREE.Group();
+    webSearchHoloGroup.visible = false;
+    palmHoloMount.add(webSearchHoloGroup);
+
+    const webGlobe = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.75 })
+    );
+    webSearchHoloGroup.add(webGlobe);
+
+    const webOrbitRing1 = new THREE.Mesh(
+      new THREE.TorusGeometry(0.20, 0.004, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0x00ffff })
+    );
+    webOrbitRing1.rotation.x = 0.8;
+    webSearchHoloGroup.add(webOrbitRing1);
+
+    const webSatellites = [];
+    for (let i = 0; i < 3; i++) {
+      const sat = new THREE.Mesh(
+        new THREE.SphereGeometry(0.02, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      webSearchHoloGroup.add(sat);
+      webSatellites.push(sat);
+    }
+
+    // 4. CREATIVE GEN COLOR PALETTE + 3D STYLUS BRUSH + SCULPTURE
+    const creativePaletteGroup = new THREE.Group();
+    creativePaletteGroup.visible = false;
+    palmHoloMount.add(creativePaletteGroup);
+
+    const paletteDisk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 0.012, 24),
+      new THREE.MeshBasicMaterial({ color: 0x1e1b4b, transparent: true, opacity: 0.85 })
+    );
+    paletteDisk.rotation.x = Math.PI / 2;
+    creativePaletteGroup.add(paletteDisk);
+
+    const swatchColors = [0x00e5ff, 0xf472b6, 0xfde047, 0x00ff88];
+    swatchColors.forEach((col, i) => {
+      const a = (i / 4) * Math.PI * 2;
+      const swatch = new THREE.Mesh(
+        new THREE.SphereGeometry(0.032, 12, 12),
+        new THREE.MeshBasicMaterial({ color: col })
+      );
+      swatch.position.set(Math.cos(a) * 0.085, Math.sin(a) * 0.085, 0.012);
+      creativePaletteGroup.add(swatch);
+    });
+
+    const rightHandStylus = new THREE.Group();
+    rightHandStylus.position.set(0, -0.14, 0.06);
+    rightHandStylus.rotation.x = Math.PI / 2.2;
+    rightHandStylus.visible = false;
+    rightSideArm.handPivot.add(rightHandStylus);
+
+    const stylusShaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.014, 0.018, 0.22, 16),
+      metalMat
+    );
+    rightHandStylus.add(stylusShaft);
+
+    const stylusTip = new THREE.Mesh(
+      new THREE.ConeGeometry(0.022, 0.06, 16),
+      new THREE.MeshBasicMaterial({ color: 0xf472b6 })
+    );
+    stylusTip.position.y = 0.14;
+    rightHandStylus.add(stylusTip);
+
+    const creativeHoloGroup = new THREE.Group();
+    creativeHoloGroup.position.set(0, -0.06, 0.56);
+    creativeHoloGroup.visible = false;
+    holoRoot.add(creativeHoloGroup);
+
+    const artCanvas = document.createElement('canvas');
+    artCanvas.width = 320;
+    artCanvas.height = 240;
+    const artCtx = artCanvas.getContext('2d');
+    const artTex = new THREE.CanvasTexture(artCanvas);
+
+    const artPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.68, 0.48),
+      new THREE.MeshBasicMaterial({ map: artTex, transparent: true, side: THREE.DoubleSide })
+    );
+    creativeHoloGroup.add(artPlane);
+
+    const artSculpture = new THREE.Mesh(
+      new THREE.TorusKnotGeometry(0.11, 0.025, 64, 12),
+      new THREE.MeshBasicMaterial({ color: 0xf472b6, wireframe: true })
+    );
+    artSculpture.position.set(0, 0, 0.08);
+    creativeHoloGroup.add(artSculpture);
+
+    // 5. CODING IDE HOLOGRAM
+    const codingHoloGroup = new THREE.Group();
+    codingHoloGroup.position.set(0, -0.35, 0.44);
+    codingHoloGroup.visible = false;
+    holoRoot.add(codingHoloGroup);
+
+    const kbPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.82, 0.26),
+      new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+    );
+    kbPlane.rotation.x = -Math.PI / 2 + 0.28;
+    codingHoloGroup.add(kbPlane);
+
+    const kbBorder = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.PlaneGeometry(0.84, 0.28)),
+      new THREE.LineBasicMaterial({ color: 0x00ff88 })
+    );
+    kbBorder.rotation.x = -Math.PI / 2 + 0.28;
+    codingHoloGroup.add(kbBorder);
+
+    const holoKeys = [];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 10; col++) {
+        const keyMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.058, 0.052),
+          new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+        );
+        const zOff = (row - 1) * 0.068;
+        const yOff = -zOff * Math.tan(0.28) + 0.005;
+        keyMesh.position.set((col - 4.5) * 0.074, yOff, zOff);
+        keyMesh.rotation.x = -Math.PI / 2 + 0.28;
+        codingHoloGroup.add(keyMesh);
+        holoKeys.push(keyMesh);
+      }
+    }
+
+    const codeScreenCanvas = document.createElement('canvas');
+    codeScreenCanvas.width = 640;
+    codeScreenCanvas.height = 360;
+    const codeScreenCtx = codeScreenCanvas.getContext('2d');
+    const codeScreenTex = new THREE.CanvasTexture(codeScreenCanvas);
+
+    const codeScreenMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.06, 0.56),
+      new THREE.MeshBasicMaterial({
+        map: codeScreenTex,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    codeScreenMesh.position.set(0, 0.30, 0.24);
+    codeScreenMesh.rotation.y = Math.PI;
+    codeScreenMesh.rotation.x = 0.22;
+    codingHoloGroup.add(codeScreenMesh);
+
+    // 6. DOCUMENT / PDF READING HOLOGRAM
+    const readingHoloGroup = new THREE.Group();
+    readingHoloGroup.position.set(0, -0.24, 0.42);
+    readingHoloGroup.rotation.x = -0.48;
+    readingHoloGroup.visible = false;
+    holoRoot.add(readingHoloGroup);
+
+    const docPageCanvas = document.createElement('canvas');
+    docPageCanvas.width = 256;
+    docPageCanvas.height = 320;
+    const docPageCtx = docPageCanvas.getContext('2d');
+    const docPageTex = new THREE.CanvasTexture(docPageCanvas);
+
+    const leftPage = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.32, 0.40),
+      new THREE.MeshBasicMaterial({ map: docPageTex, transparent: true, side: THREE.DoubleSide })
+    );
+    leftPage.position.set(-0.165, 0, 0.02);
+    leftPage.rotation.y = 0.22;
+    readingHoloGroup.add(leftPage);
+
+    const rightPage = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.32, 0.40),
+      new THREE.MeshBasicMaterial({ map: docPageTex, transparent: true, side: THREE.DoubleSide })
+    );
+    rightPage.position.set(0.165, 0, 0.02);
+    rightPage.rotation.y = -0.22;
+    readingHoloGroup.add(rightPage);
+
+    const flippingPagePivot = new THREE.Group();
+    readingHoloGroup.add(flippingPagePivot);
+
+    const flippingPageMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.31, 0.39),
+      new THREE.MeshBasicMaterial({ color: 0x2dd4bf, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+    );
+    flippingPageMesh.position.set(0.155, 0, 0.01);
+    flippingPagePivot.add(flippingPageMesh);
+
+    // 7. AUTOMATION / WORKING HOLOGRAM
+    const workingGearsGroup = new THREE.Group();
+    workingGearsGroup.position.set(0, -0.14, 0.48);
+    workingGearsGroup.visible = false;
+    holoRoot.add(workingGearsGroup);
+
+    const gear1 = new THREE.Mesh(
+      new THREE.TorusGeometry(0.15, 0.022, 8, 12),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true })
+    );
+    gear1.position.set(-0.13, 0.05, 0);
+    workingGearsGroup.add(gear1);
+
+    const gear2 = new THREE.Mesh(
+      new THREE.TorusGeometry(0.12, 0.018, 8, 10),
+      new THREE.MeshBasicMaterial({ color: 0xec4899, wireframe: true })
+    );
+    gear2.position.set(0.13, -0.05, 0);
+    workingGearsGroup.add(gear2);
+
+    // 8. SECURITY SHIELD GUARD HOLOGRAM
+    const securityShieldGroup = new THREE.Group();
+    securityShieldGroup.position.set(0, -0.05, 0.48);
+    securityShieldGroup.visible = false;
+    holoRoot.add(securityShieldGroup);
+
+    const shieldDome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.42),
+      new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true, transparent: true, opacity: 0.45 })
+    );
+    shieldDome.rotation.x = Math.PI / 2;
+    securityShieldGroup.add(shieldDome);
+
+    const shieldOuterRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.46, 0.50, 6),
+      new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide })
+    );
+    shieldOuterRing.position.z = 0.32;
+    securityShieldGroup.add(shieldOuterRing);
+
+    // 9. SUPERCHARGE / REFUEL HOLOGRAM
+    const chargingRingsGroup = new THREE.Group();
+    chargingRingsGroup.visible = false;
+    holoRoot.add(chargingRingsGroup);
+
+    const chargeTorusList = [];
+    for (let i = 0; i < 3; i++) {
+      const cRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.62, 0.012, 12, 48),
+        new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.7 })
+      );
+      cRing.rotation.x = Math.PI / 2;
+      chargingRingsGroup.add(cRing);
+      chargeTorusList.push(cRing);
+    }
+
+    // 10. FLOATING EMOTE SPRITES
+    function createTextSprite(symbol, color, size = 0.24) {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.font = 'bold 78px sans-serif';
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(symbol, 64, 64);
+      const mat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(size, size, 1);
+      return sprite;
+    }
+
+    const musicNotesGroup = new THREE.Group();
+    musicNotesGroup.visible = false;
+    holoRoot.add(musicNotesGroup);
+    const musicNoteSprites = [
+      createTextSprite('♪', '#00e5ff'),
+      createTextSprite('♫', '#e879f9'),
+      createTextSprite('♩', '#38bdf8'),
+      createTextSprite('♬', '#c084fc')
+    ];
+    musicNoteSprites.forEach(s => musicNotesGroup.add(s));
+
+    const loveHeartsGroup = new THREE.Group();
+    loveHeartsGroup.visible = false;
+    holoRoot.add(loveHeartsGroup);
+    const loveHeartSprites = [
+      createTextSprite('♥', '#fb7185', 0.26),
+      createTextSprite('♥', '#f43f5e', 0.20),
+      createTextSprite('♥', '#fda4af', 0.24),
+      createTextSprite('♥', '#fb7185', 0.18)
+    ];
+    loveHeartSprites.forEach(s => loveHeartsGroup.add(s));
+
+    const confusedGroup = new THREE.Group();
+    confusedGroup.visible = false;
+    holoRoot.add(confusedGroup);
+    const confusedSprites = [
+      createTextSprite('?', '#fb923c', 0.28),
+      createTextSprite('?', '#facc15', 0.22),
+      createTextSprite('?', '#38bdf8', 0.24)
+    ];
+    confusedSprites.forEach(s => confusedGroup.add(s));
+
+    const overloadGroup = new THREE.Group();
+    overloadGroup.visible = false;
+    holoRoot.add(overloadGroup);
+    const overloadSprites = [
+      createTextSprite('!', '#ef4444', 0.28),
+      createTextSprite('!', '#facc15', 0.26),
+      createTextSprite('×', '#fb923c', 0.26)
+    ];
+    overloadSprites.forEach(s => overloadGroup.add(s));
+
+    const celebrateGroup = new THREE.Group();
+    celebrateGroup.visible = false;
+    holoRoot.add(celebrateGroup);
+    const celebrateSprites = [
+      createTextSprite('★', '#fde047', 0.26),
+      createTextSprite('✦', '#34d399', 0.26),
+      createTextSprite('★', '#00e5ff', 0.24),
+      createTextSprite('✦', '#e879f9', 0.24)
+    ];
+    celebrateSprites.forEach(s => celebrateGroup.add(s));
+
+    const repulsorPulseMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.06, 0.11, 32),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0, side: THREE.DoubleSide })
+    );
+    scene.add(repulsorPulseMesh);
+    let repulsorPulseProgress = 0;
+
+    // Background Floating Dust Particles
+    const particleCount = 120;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      particlePositions[i] = (Math.random() - 0.5) * 6;
+      particlePositions[i + 1] = Math.random() * 4 - 1;
+      particlePositions[i + 2] = (Math.random() - 0.5) * 6;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    const dustParticles = new THREE.Points(
+      particleGeo,
+      new THREE.PointsMaterial({ color: 0x00e5ff, size: 0.035, transparent: true, opacity: 0.6 })
+    );
+    // dustParticles: not shown (model only)
+
+    // =========================================================================
+    // 7. PRE-WARM ALL HOLOGRAM CANVASES & COMPILE SHADERS
+    // =========================================================================
+    function updateCodeScreenCanvas(time) {
+      codeScreenCtx.clearRect(0, 0, 640, 360);
+      codeScreenCtx.fillStyle = 'rgba(4, 22, 18, 0.85)';
+      codeScreenCtx.fillRect(0, 0, 640, 360);
+      codeScreenCtx.strokeStyle = '#00ff88';
+      codeScreenCtx.lineWidth = 5;
+      codeScreenCtx.strokeRect(3, 3, 634, 354);
+
+      codeScreenCtx.fillStyle = 'rgba(0, 255, 136, 0.18)';
+      codeScreenCtx.fillRect(6, 6, 628, 34);
+      codeScreenCtx.fillStyle = '#00ff88';
+      codeScreenCtx.font = 'bold 16px monospace';
+      codeScreenCtx.fillText('● ● ●   JUPITER NEURAL IDE v3.6 — neural_solver.ts', 18, 28);
+
+      codeScreenCtx.strokeStyle = 'rgba(0, 255, 136, 0.35)';
+      codeScreenCtx.lineWidth = 2;
+      codeScreenCtx.beginPath();
+      codeScreenCtx.moveTo(150, 40);
+      codeScreenCtx.lineTo(150, 275);
+      codeScreenCtx.moveTo(6, 275);
+      codeScreenCtx.lineTo(634, 275);
+      codeScreenCtx.stroke();
+
+      codeScreenCtx.fillStyle = '#6ee7b7';
+      codeScreenCtx.font = '14px monospace';
+      const files = ['▼ src/', '  ├─ core.ts', '  ├─ vision.ts', '  ├─ math_ik.ts', '  └─ buddy.ts'];
+      files.forEach((f, i) => codeScreenCtx.fillText(f, 16, 70 + i * 26));
+
+      const codeLines = [
+        'export async function synthesize(ctx: Context) {',
+        '  const graph = await NeuralCore.compile(ctx);',
+        '  const tensors = graph.allocate({ gpu: true });',
+        '  for (const step of tensors.pipeline()) {',
+        '    await step.dispatch(0x00FF88);',
+        '  }',
+        '  return { status: "VERIFIED", latency: "1.2ms" };',
+        '}'
+      ];
+      const activeLine = Math.floor(time * 4.5) % codeLines.length;
+      codeLines.forEach((line, idx) => {
+        if (idx === activeLine) {
+          codeScreenCtx.fillStyle = 'rgba(0, 255, 136, 0.22)';
+          codeScreenCtx.fillRect(156, 52 + idx * 26, 470, 24);
+          codeScreenCtx.fillStyle = '#ffffff';
+        } else {
+          codeScreenCtx.fillStyle = '#00ff88';
+        }
+        codeScreenCtx.font = 'bold 15px monospace';
+        codeScreenCtx.fillText(`${idx + 1}  ${line}`, 164, 69 + idx * 26);
+      });
+
+      codeScreenCtx.fillStyle = '#a7f3d0';
+      codeScreenCtx.font = '15px monospace';
+      const pct = Math.min(100, Math.floor((time * 35) % 110));
+      codeScreenCtx.fillText(`$ cargo build --release  [██████████] ${pct}%  OK`, 18, 308);
+      codeScreenCtx.fillStyle = '#00ff88';
+      codeScreenCtx.fillText(`> Visor optical reflection link: ACTIVE`, 18, 336);
+      codeScreenTex.needsUpdate = true;
+    }
+
+    function updateDocPageCanvas(time) {
+      docPageCtx.clearRect(0, 0, 256, 320);
+      docPageCtx.fillStyle = 'rgba(8, 36, 42, 0.86)';
+      docPageCtx.fillRect(0, 0, 256, 320);
+      docPageCtx.strokeStyle = '#2dd4bf';
+      docPageCtx.lineWidth = 4;
+      docPageCtx.strokeRect(4, 4, 248, 312);
+
+      docPageCtx.fillStyle = '#2dd4bf';
+      docPageCtx.font = 'bold 14px monospace';
+      docPageCtx.fillText('DOC // NEURAL_SPEC.PDF', 18, 28);
+
+      const activeRow = Math.floor(time * 3.5) % 9;
+      for (let i = 0; i < 9; i++) {
+        docPageCtx.fillStyle = (i === activeRow) ? '#ffffff' : 'rgba(45, 212, 191, 0.55)';
+        const w = (i % 3 === 2) ? 160 : 210;
+        docPageCtx.fillRect(20, 52 + i * 26, w, 10);
+      }
+      docPageTex.needsUpdate = true;
+    }
+
+    function updateCreativeCanvas(time) {
+      artCtx.clearRect(0, 0, 320, 240);
+      artCtx.fillStyle = 'rgba(24, 10, 36, 0.82)';
+      artCtx.fillRect(0, 0, 320, 240);
+      artCtx.strokeStyle = '#f472b6';
+      artCtx.lineWidth = 4;
+      artCtx.strokeRect(3, 3, 314, 234);
+
+      artCtx.fillStyle = '#f472b6';
+      artCtx.font = 'bold 13px monospace';
+      artCtx.fillText('GEN-AI STUDIO // LIVE BRUSH', 14, 22);
+
+      artCtx.fillStyle = '#fde047';
+      artCtx.beginPath();
+      artCtx.arc(160, 100, 34 + Math.sin(time * 5) * 4, 0, Math.PI * 2);
+      artCtx.fill();
+
+      const colors = ['#00e5ff', '#f472b6', '#c084fc'];
+      colors.forEach((col, idx) => {
+        artCtx.strokeStyle = col;
+        artCtx.lineWidth = 5;
+        artCtx.beginPath();
+        for (let x = 16; x < 304; x += 8) {
+          const y = 162 + idx * 18 + Math.sin(x * 0.04 + time * 5 + idx) * 14;
+          if (x === 16) artCtx.moveTo(x, y);
+          else artCtx.lineTo(x, y);
+        }
+        artCtx.stroke();
+      });
+
+      const bx = 160 + Math.cos(time * 3.5) * 90;
+      const by = 120 + Math.sin(time * 7.0) * 55;
+      artCtx.fillStyle = '#ffffff';
+      artCtx.beginPath();
+      artCtx.arc(bx, by, 7, 0, Math.PI * 2);
+      artCtx.fill();
+
+      artTex.needsUpdate = true;
+    }
+
+    updateCodeScreenCanvas(0);
+    updateDocPageCanvas(0);
+    updateCreativeCanvas(0);
+    updateFaceTexture(0);
+    renderer.compile(scene, camera);
+
+    // =========================================================================
+    // 8. NATURAL WRIST & HAND KINEMATICS ENGINE (All 24 States!)
+    // =========================================================================
+    let mouseTargetX = 0;
+    let mouseTargetY = 0;
+    let waveTimer = 0;
+    let spinProgress = 0;
+    var spinStep = 0.2;
+    let jumpVelocity = 0;
+    let jumpOffset = 0;
+    let modeEnterTime = 0;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseTargetX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseTargetY = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function animateFloatingSprites(sprites, time) {
+      sprites.forEach((sprite, i) => {
+        const cycle = (time * 0.75 + i * (1 / sprites.length)) % 1;
+        const angle = i * ((Math.PI * 2) / sprites.length) + time * 0.9;
+        sprite.position.set(
+          Math.cos(angle) * (0.66 + cycle * 0.22),
+          0.25 + cycle * 0.85,
+          Math.sin(angle) * 0.45
+        );
+        sprite.material.opacity = Math.sin(cycle * Math.PI);
+      });
+    }
+
+    function applyFullBodyKinematics(time) {
+      const kLerp = 0.12;
+      const modeElapsed = time - modeEnterTime;
+
+      let torsoRotX = 0, torsoRotY = 0, torsoRotZ = 0;
+      let headAddX = 0, headAddY = 0, headAddZ = 0;
+
+      let lArmRot = { x: 0.08, y: 0, z: -0.38 };
+      let lElbowRot = { x: -0.42, y: 0, z: 0.12 };
+      let lHandRot = { x: 0, y: 0, z: 0 };
+      let lFingerCurl = 0.15;
+
+      let rArmRot = { x: 0.08, y: 0, z: 0.38 };
+      let rElbowRot = { x: -0.52, y: 0, z: -0.18 };
+      let rHandRot = { x: 0, y: 0, z: 0 };
+      let rFingerCurl = 0.85;
+
+      let legPitchL = 0, legPitchR = 0;
+
+      // Toggle All Holograms & Props
+      codingHoloGroup.visible = (buddyMood === 'coding');
+      codeScreenLight.intensity = (buddyMood === 'coding') ? (1.6 + Math.sin(time * 8) * 0.3) : 0;
+      mathHoloGroup.visible = (buddyMood === 'math');
+      debugHoloGroup.visible = (buddyMood === 'debugging');
+      webSearchHoloGroup.visible = (buddyMood === 'websearch');
+      creativePaletteGroup.visible = (buddyMood === 'creative');
+      rightHandStylus.visible = (buddyMood === 'creative');
+      palmProjectorBeam.visible = ['math', 'debugging', 'websearch', 'creative'].includes(buddyMood);
+      readingHoloGroup.visible = (buddyMood === 'reading');
+      memoryCrownGroup.visible = (buddyMood === 'memory');
+      creativeHoloGroup.visible = (buddyMood === 'creative');
+      workingGearsGroup.visible = (buddyMood === 'working');
+      securityShieldGroup.visible = (buddyMood === 'security');
+      chargingRingsGroup.visible = (buddyMood === 'charging');
+      ideaBulbGroup.visible = (buddyMood === 'idea');
+      eyeScannerGroup.visible = (buddyMood === 'scanning');
+      listeningWavesGroup.visible = (buddyMood === 'listening');
+      musicNotesGroup.visible = (buddyMood === 'music');
+      loveHeartsGroup.visible = (buddyMood === 'love');
+      confusedGroup.visible = (buddyMood === 'confused');
+      overloadGroup.visible = (buddyMood === 'overload');
+      celebrateGroup.visible = (buddyMood === 'celebrate');
+
+      helmetEarRings[1].scale.setScalar(1.0);
+
+      if (buddyMood === 'music') {
+        djHeadphonesGroup.scale.setScalar(lerp(djHeadphonesGroup.scale.x, 1.0, 0.18));
+        djHeadphonesGroup.rotation.x = lerp(djHeadphonesGroup.rotation.x, 0.0, 0.10);
+      } else {
+        djHeadphonesGroup.rotation.x = lerp(djHeadphonesGroup.rotation.x, -1.45, 0.14);
+        if (djHeadphonesGroup.rotation.x < -1.1) {
+          djHeadphonesGroup.scale.setScalar(lerp(djHeadphonesGroup.scale.x, 0.01, 0.2));
+        }
+      }
+
+      if (buddyMood === 'idle') {
+        lArmRot = { x: -0.35, y: -0.15, z: -1.28 };
+        lElbowRot = { x: -0.35, y: 0, z: -0.75 };
+        lHandRot = { x: -0.1, y: 0, z: Math.sin(time * 6.5) * 0.26 };
+        lFingerCurl = 0.0;
+        rFingerCurl = 0.90;
+      } else if (buddyMood === 'coding') {
+        torsoRotX = 0.08;
+        headAddX = 0.12;
+        headAddY = Math.sin(time * 3.5) * 0.12;
+
+        lArmRot = { x: -0.48, y: -0.18 + Math.sin(time * 7) * 0.07, z: -0.24 };
+        lElbowRot = { x: -0.78, y: -0.25, z: 0.22 };
+        lHandRot = { x: 0.55, y: 0, z: -0.15 };
+        lFingerCurl = 0.35;
+
+        rArmRot = { x: -0.48, y: 0.18 + Math.cos(time * 7) * 0.07, z: 0.24 };
+        rElbowRot = { x: -0.78, y: 0.25, z: -0.22 };
+        rHandRot = { x: 0.55, y: 0, z: 0.15 };
+        rFingerCurl = 0.35;
+
+        holoKeys.forEach((k, i) => {
+          k.material.opacity = (Math.sin(time * 18 + i * 1.7) > 0.65) ? 0.95 : 0.28;
+        });
+        updateCodeScreenCanvas(time);
+      } else if (buddyMood === 'reading') {
+        torsoRotX = 0.10;
+        const readCycle = (time * 0.65) % 1;
+        const isFlipping = readCycle > 0.75;
+        const flipPhase = isFlipping ? (readCycle - 0.75) / 0.25 : 0;
+
+        headAddX = 0.18;
+        headAddY = isFlipping ? Math.cos(flipPhase * Math.PI) * 0.18 : (readCycle / 0.75 - 0.5) * 0.28;
+
+        lArmRot = { x: -0.58, y: 0.12, z: -0.22 };
+        lElbowRot = { x: -0.88, y: 0.15, z: 0.25 };
+        lHandRot = { x: -0.25, y: 0.2, z: 0.2 };
+        lFingerCurl = 0.15;
+
+        const traceY = isFlipping ? Math.sin(flipPhase * Math.PI) * 0.35 : -(readCycle / 0.75 - 0.5) * 0.22;
+        rArmRot = { x: -0.62 + Math.sin(time * 4) * 0.05, y: -0.10 + traceY, z: 0.28 };
+        rElbowRot = { x: -0.92, y: -0.2, z: -0.22 };
+        rHandRot = { x: 0.35, y: -0.3, z: isFlipping ? 0.45 : 0 };
+        rFingerCurl = isFlipping ? 0.05 : 0.25;
+
+        flippingPagePivot.visible = isFlipping;
+        if (isFlipping) {
+          flippingPagePivot.rotation.y = -flipPhase * Math.PI * 0.92;
+        }
+        updateDocPageCanvas(time);
+      } else if (buddyMood === 'creative') {
+        torsoRotY = Math.cos(time * 3.5) * 0.12;
+        headAddZ = Math.sin(time * 3.5) * 0.10;
+        headAddY = Math.cos(time * 3.5) * 0.14;
+
+        lArmRot = { x: -0.58, y: -0.22, z: -0.38 };
+        lElbowRot = { x: -0.90, y: 0, z: 0.15 };
+        lHandRot = { x: 0, y: 0, z: 0 };
+        lFingerCurl = 0.05;
+
+        rArmRot = {
+          x: -0.78 + Math.sin(time * 7.0) * 0.22,
+          y: Math.cos(time * 3.5) * 0.32,
+          z: 0.38
+        };
+        rElbowRot = { x: -0.68, y: 0, z: -0.18 };
+        rHandRot = { x: 0.25, y: -0.3, z: Math.sin(time * 7.0) * 0.25 };
+        rFingerCurl = 0.55;
+
+        palmProjectorBeam.material.color.setHex(0xf472b6);
+        artSculpture.rotation.x = time * 1.8;
+        artSculpture.rotation.y = time * 2.4;
+        updateCreativeCanvas(time);
+      } else if (buddyMood === 'math') {
+        torsoRotY = 0.10;
+        headAddZ = -0.08;
+        headAddX = 0.06;
+
+        lArmRot = { x: -0.65, y: -0.15, z: -0.35 };
+        lElbowRot = { x: -0.92, y: 0, z: 0.15 };
+        lFingerCurl = 0.0;
+
+        rArmRot = { x: -0.68, y: -0.25, z: 0.45 };
+        rElbowRot = { x: -1.15, y: 0.15, z: -0.25 };
+        rHandRot = { x: 0.15, y: 0, z: Math.sin(time * 4) * 0.06 };
+        rFingerCurl = 0.65;
+
+        palmProjectorBeam.material.color.setHex(0xfacc15);
+        mathWireIco.rotation.x = time * 1.2;
+        mathWireIco.rotation.y = time * 1.6;
+        mathInnerOcta.rotation.x = -time * 2.0;
+        mathInnerOcta.rotation.z = time * 1.5;
+        mathGyroRing.rotation.x = Math.sin(time * 1.5) * 0.8;
+        mathGyroRing.rotation.y = time * 2.0;
+      } else if (buddyMood === 'websearch') {
+        torsoRotY = 0.08;
+        headAddX = 0.08;
+        headAddY = -0.10;
+
+        lArmRot = { x: -0.65, y: -0.10, z: -0.32 };
+        lElbowRot = { x: -0.92, y: 0, z: 0.12 };
+        lFingerCurl = 0.0;
+
+        rArmRot = { x: -0.68, y: 0.25 + Math.sin(time * 5) * 0.18, z: 0.35 };
+        rElbowRot = { x: -0.88, y: 0, z: -0.20 };
+        rHandRot = { x: 0.3, y: -0.3, z: 0 };
+        rFingerCurl = 0.15;
+
+        palmProjectorBeam.material.color.setHex(0x38bdf8);
+        webGlobe.rotation.y = time * 1.5;
+        webOrbitRing1.rotation.z = time * 2.0;
+        webSatellites.forEach((sat, idx) => {
+          const a = time * 3.0 + idx * ((Math.PI * 2) / 3);
+          sat.position.set(Math.cos(a) * 0.20, Math.sin(a) * 0.12, Math.sin(a) * 0.16);
+        });
+      } else if (buddyMood === 'memory') {
+        headAddX = -0.08;
+        lArmRot = { x: -0.55, y: -0.15, z: -1.28 };
+        lElbowRot = { x: -0.78, y: 0, z: -0.48 };
+        lFingerCurl = 0.15;
+
+        rArmRot = { x: -0.55, y: 0.15, z: 1.28 };
+        rElbowRot = { x: -0.78, y: 0, z: 0.48 };
+        rFingerCurl = 0.15;
+
+        memoryCrownGroup.rotation.y = time * 1.4;
+        memoryNodes.forEach((n, idx) => {
+          n.rotation.x = time * 2;
+          n.position.y = Math.sin(time * 3 + idx) * 0.08;
+        });
+      } else if (buddyMood === 'debugging') {
+        torsoRotX = 0.08;
+        headAddX = 0.14;
+        headAddY = -0.12;
+
+        lArmRot = { x: -0.65, y: 0.05, z: -0.30 };
+        lElbowRot = { x: -0.92, y: 0, z: 0.12 };
+        lFingerCurl = 0.0;
+
+        rArmRot = { x: -0.72, y: 0.35, z: 0.32 };
+        rElbowRot = { x: -0.90, y: 0, z: -0.22 };
+        rHandRot = { x: 0.35, y: -0.4, z: 0 };
+        rFingerCurl = 0.15;
+
+        palmProjectorBeam.material.color.setHex(0xf43f5e);
+        bugCube.rotation.x = time * 3.5;
+        bugCube.rotation.y = time * 4.2;
+        bugCore.rotation.z = -time * 5.0;
+        bugTargetRing.rotation.x = Math.sin(time * 3) * 0.7;
+        bugTargetRing.rotation.y = time * 2.5;
+      } else if (buddyMood === 'listening') {
+        torsoRotX = 0.14;
+        torsoRotY = -0.12;
+        headAddZ = 0.16;
+        headAddY = -0.14;
+
+        rArmRot = { x: -0.55, y: 0.15, z: 1.25 };
+        rElbowRot = { x: -0.75, y: 0, z: 0.55 };
+        rHandRot = { x: 0.2, y: -0.4, z: Math.sin(time * 5) * 0.06 };
+        rFingerCurl = 0.12;
+
+        lArmRot = { x: 0.12, y: 0, z: -0.35 };
+        lElbowRot = { x: -0.45, y: 0, z: 0.15 };
+        lFingerCurl = 0.4;
+
+        soundWaveRings.forEach((ring, i) => {
+          const p = ((time * 1.5 + i * 0.333) % 1);
+          ring.position.x = 0.96 - p * 0.41;
+          const s = 1.45 - p * 0.85;
+          ring.scale.set(s, s, 1);
+          ring.material.opacity = Math.sin(p * Math.PI) * 0.9;
+        });
+        helmetEarRings[1].scale.setScalar(1.0 + Math.sin(time * 9) * 0.12);
+      } else if (buddyMood === 'thinking') {
+        headAddX = -0.14;
+        headAddZ = -0.12;
+        headAddY = 0.10;
+
+        rArmRot = { x: -0.68, y: -0.25, z: 0.45 };
+        rElbowRot = { x: -1.15, y: 0.15, z: -0.25 };
+        rHandRot = { x: Math.sin(time * 7) * 0.10, y: 0, z: 0 };
+        rFingerCurl = 0.55;
+
+        lArmRot = { x: -0.42, y: 0.38, z: -0.25 };
+        lElbowRot = { x: -0.95, y: 0, z: 0.35 };
+        lFingerCurl = 0.65;
+      } else if (buddyMood === 'speaking') {
+        torsoRotX = Math.sin(time * 5) * 0.04;
+        torsoRotY = Math.sin(time * 2.5) * 0.08;
+        headAddZ = Math.sin(time * 3.5) * 0.06;
+
+        lArmRot = { x: -0.62 + Math.sin(time * 6) * 0.14, y: 0.12, z: -0.52 };
+        lElbowRot = { x: -0.78, y: 0, z: 0.18 };
+        lHandRot = { x: 0, y: 0, z: Math.sin(time * 8) * 0.15 };
+        lFingerCurl = 0.1;
+
+        rArmRot = { x: -0.62 + Math.cos(time * 6) * 0.14, y: -0.12, z: 0.52 };
+        rElbowRot = { x: -0.78, y: 0, z: -0.18 };
+        rHandRot = { x: 0, y: 0, z: -Math.cos(time * 8) * 0.15 };
+        rFingerCurl = 0.1;
+      } else if (buddyMood === 'scanning') {
+        const scanYaw = Math.sin(time * 1.6) * 0.52;
+        const scanPitch = Math.sin(time * 3.2) * 0.18;
+        torsoRotY = scanYaw * 0.45;
+        torsoRotX = 0.06;
+        headAddY = scanYaw;
+        headAddX = scanPitch;
+        headAddZ = -scanYaw * 0.15;
+
+        lArmRot = { x: -0.35, y: 0, z: -0.58 };
+        lElbowRot = { x: -0.65, y: 0, z: 0.22 };
+        lFingerCurl = 0.1;
+
+        rArmRot = { x: -0.35, y: 0, z: 0.58 };
+        rElbowRot = { x: -0.65, y: 0, z: -0.22 };
+        rFingerCurl = 0.1;
+
+        scanReticleRing.rotation.z = time * 3.0;
+        scanLaserLine.position.y = Math.sin(time * 6.0) * 0.20;
+        eyeBeamCones.forEach(c => {
+          c.material.opacity = 0.20 + Math.sin(time * 10) * 0.05;
+        });
+      } else if (buddyMood === 'working') {
+        torsoRotX = 0.08;
+        lArmRot = { x: -0.62, y: 0.12, z: -0.35 };
+        lElbowRot = { x: -0.82, y: 0, z: 0.18 };
+        lHandRot = { x: 0.25, y: 0, z: Math.sin(time * 6) * 0.25 };
+        lFingerCurl = 0.20;
+
+        rArmRot = { x: -0.62, y: -0.12, z: 0.35 };
+        rElbowRot = { x: -0.82, y: 0, z: -0.18 };
+        rHandRot = { x: 0.25, y: 0, z: -Math.sin(time * 6) * 0.25 };
+        rFingerCurl = 0.20;
+
+        gear1.rotation.z = time * 2.4;
+        gear2.rotation.z = -time * 2.8;
+      } else if (buddyMood === 'security') {
+        torsoRotX = 0.06;
+        lArmRot = { x: -0.78, y: 0.15, z: -0.32 };
+        lElbowRot = { x: -0.45, y: 0, z: 0.1 };
+        lHandRot = { x: -0.45, y: 0, z: 0 };
+        lFingerCurl = 0.0;
+
+        rArmRot = { x: -0.78, y: -0.15, z: 0.32 };
+        rElbowRot = { x: -0.45, y: 0, z: -0.1 };
+        rHandRot = { x: -0.45, y: 0, z: 0 };
+        rFingerCurl = 0.0;
+
+        shieldOuterRing.rotation.z = time * 1.5;
+        shieldDome.scale.setScalar(1 + Math.sin(time * 5) * 0.03);
+      } else if (buddyMood === 'charging') {
+        headAddX = -0.12;
+        lArmRot = { x: 0.1, y: 0, z: -0.95 + Math.sin(time * 12) * 0.05 };
+        lElbowRot = { x: -0.35, y: 0, z: -0.25 };
+        lFingerCurl = 0.9;
+
+        rArmRot = { x: 0.1, y: 0, z: 0.95 - Math.sin(time * 12) * 0.05 };
+        rElbowRot = { x: -0.35, y: 0, z: 0.25 };
+        rFingerCurl = 0.9;
+
+        chargeTorusList.forEach((cRing, i) => {
+          const p = (time * 1.4 + i * 0.33) % 1;
+          cRing.position.y = -0.8 + p * 1.7;
+          const s = Math.sin(p * Math.PI);
+          cRing.scale.set(s, s, 1);
+          cRing.material.opacity = s * 0.85;
+        });
+      } else if (buddyMood === 'overload') {
+        torsoRotZ = Math.sin(time * 10) * 0.14;
+        torsoRotX = Math.cos(time * 8) * 0.10;
+        headAddZ = Math.cos(time * 10) * 0.22;
+        headAddX = Math.sin(time * 8) * 0.16;
+
+        lArmRot = { x: -0.3, y: 0, z: -1.1 + Math.sin(time * 14) * 0.25 };
+        lElbowRot = { x: -0.4, y: 0, z: -0.4 };
+        rArmRot = { x: -0.3, y: 0, z: 1.1 + Math.cos(time * 14) * 0.25 };
+        rElbowRot = { x: -0.4, y: 0, z: 0.4 };
+
+        animateFloatingSprites(overloadSprites, time);
+      } else if (buddyMood === 'idea') {
+        headAddX = -0.08;
+        headAddZ = -0.08;
+
+        rArmRot = { x: -0.45, y: 0.15, z: 1.32 };
+        rElbowRot = { x: -0.45, y: 0, z: 0.65 };
+        rFingerCurl = 0.15;
+
+        lArmRot = { x: 0.1, y: 0, z: -0.42 };
+        lElbowRot = { x: -0.5, y: 0, z: 0.15 };
+
+        ideaBulbGroup.rotation.y = time * 2.0;
+        const pulse = 1 + Math.sin(time * 10) * 0.08;
+        bulbGlass.scale.setScalar(pulse);
+        bulbHalo.scale.setScalar(pulse);
+      } else if (buddyMood === 'love') {
+        torsoRotZ = Math.sin(time * 4) * 0.10;
+        headAddZ = Math.sin(time * 4) * 0.14;
+
+        lArmRot = { x: -0.68, y: 0.38, z: -0.22 };
+        lElbowRot = { x: -1.05, y: 0, z: 0.35 };
+        lFingerCurl = 0.25;
+
+        rArmRot = { x: -0.68, y: -0.38, z: 0.22 };
+        rElbowRot = { x: -1.05, y: 0, z: -0.35 };
+        rFingerCurl = 0.25;
+
+        animateFloatingSprites(loveHeartSprites, time);
+      } else if (buddyMood === 'confused') {
+        headAddZ = 0.26 + Math.sin(time * 3) * 0.05;
+        headAddY = -0.10;
+
+        lArmRot = { x: -0.25, y: -0.25, z: -1.05 };
+        lElbowRot = { x: -0.55, y: 0, z: -0.55 };
+        lFingerCurl = 0.0;
+
+        rArmRot = { x: -0.25, y: 0.25, z: 1.05 };
+        rElbowRot = { x: -0.55, y: 0, z: 0.55 };
+        rFingerCurl = 0.0;
+
+        animateFloatingSprites(confusedSprites, time);
+      } else if (buddyMood === 'shy') {
+        torsoRotY = Math.sin(time * 3.5) * 0.18;
+        headAddX = 0.22;
+        headAddZ = Math.sin(time * 3.5) * 0.10;
+
+        lArmRot = { x: -0.48, y: 0.32, z: -0.18 };
+        lElbowRot = { x: -0.82, y: 0, z: 0.32 + Math.sin(time * 9) * 0.06 };
+        lFingerCurl = 0.3;
+
+        rArmRot = { x: -0.48, y: -0.32, z: 0.18 };
+        rElbowRot = { x: -0.82, y: 0, z: -0.32 - Math.sin(time * 9) * 0.06 };
+        rFingerCurl = 0.3;
+      } else if (buddyMood === 'happy' || buddyMood === 'celebrate') {
+        lArmRot = { x: -0.35, y: 0, z: -1.38 + Math.sin(time * 10) * 0.14 };
+        lElbowRot = { x: -0.25, y: 0, z: -0.65 };
+        lFingerCurl = 0.0;
+
+        rArmRot = { x: -0.35, y: 0, z: 1.38 - Math.sin(time * 10) * 0.14 };
+        rElbowRot = { x: -0.25, y: 0, z: 0.65 };
+        rFingerCurl = 0.0;
+
+        legPitchL = Math.sin(time * 10) * 0.22;
+        legPitchR = -Math.sin(time * 10) * 0.22;
+
+        if (buddyMood === 'celebrate') {
+          torsoRotY = Math.sin(time * 5) * 0.22;
+          animateFloatingSprites(celebrateSprites, time);
+        }
+      } else if (buddyMood === 'music') {
+        const beat = Math.sin(time * 8.5);
+        if (modeElapsed < 0.85) {
+          headAddX = 0.08;
+          lArmRot = { x: -0.55, y: -0.15, z: -1.32 };
+          lElbowRot = { x: -0.75, y: 0, z: -0.52 };
+          lFingerCurl = 0.25;
+
+          rArmRot = { x: -0.55, y: 0.15, z: 1.32 };
+          rElbowRot = { x: -0.75, y: 0, z: 0.52 };
+          rFingerCurl = 0.25;
+        } else {
+          torsoRotZ = Math.sin(time * 4.25) * 0.11;
+          torsoRotX = Math.abs(beat) * 0.09;
+          headAddX = Math.abs(beat) * 0.20;
+          headAddZ = Math.sin(time * 4.25) * 0.14;
+
+          rArmRot = { x: -0.55, y: 0.15, z: 1.30 };
+          rElbowRot = { x: -0.78, y: 0, z: 0.50 };
+          rFingerCurl = 0.3;
+
+          lArmRot = { x: -0.55, y: 0.15, z: -0.68 + beat * 0.18 };
+          lElbowRot = { x: -0.78, y: 0, z: 0.18 };
+          lFingerCurl = 0.15;
+
+          legPitchL = Math.abs(beat) * 0.18;
+          legPitchR = Math.abs(Math.cos(time * 8.5)) * 0.18;
+        }
+
+        djCups.forEach(ring => {
+          ring.scale.setScalar(1 + Math.abs(beat) * 0.12);
+        });
+        animateFloatingSprites(musicNoteSprites, time);
+      } else if (buddyMood === 'sleep') {
+        torsoRotX = 0.16;
+        headAddX = 0.30;
+        lArmRot = { x: 0.15, y: 0, z: -0.22 };
+        lElbowRot = { x: -0.15, y: 0, z: 0 };
+        lFingerCurl = 0.5;
+        rArmRot = { x: 0.15, y: 0, z: 0.22 };
+        rElbowRot = { x: -0.15, y: 0, z: 0 };
+        rFingerCurl = 0.5;
+        legPitchL = 0.20;
+        legPitchR = 0.20;
+      }
+
+      if (waveTimer > 0) {
+        waveTimer -= 0.016;
+        lArmRot = { x: -0.35, y: -0.15, z: -1.28 };
+        lElbowRot = { x: -0.35, y: 0, z: -0.75 };
+        lHandRot = { x: -0.1, y: 0, z: Math.sin(time * 14) * 0.30 };
+        lFingerCurl = 0.0;
+      }
+
+      torsoGroup.rotation.x = lerp(torsoGroup.rotation.x, torsoRotX, kLerp);
+      torsoGroup.rotation.y = lerp(torsoGroup.rotation.y, torsoRotY, kLerp);
+      torsoGroup.rotation.z = lerp(torsoGroup.rotation.z, torsoRotZ, kLerp);
+
+      leftSideArm.armRoot.rotation.x = lerp(leftSideArm.armRoot.rotation.x, lArmRot.x, kLerp);
+      leftSideArm.armRoot.rotation.y = lerp(leftSideArm.armRoot.rotation.y, lArmRot.y, kLerp);
+      leftSideArm.armRoot.rotation.z = lerp(leftSideArm.armRoot.rotation.z, lArmRot.z, kLerp);
+      leftSideArm.elbowPivot.rotation.x = lerp(leftSideArm.elbowPivot.rotation.x, lElbowRot.x, kLerp);
+      leftSideArm.elbowPivot.rotation.y = lerp(leftSideArm.elbowPivot.rotation.y, lElbowRot.y, kLerp);
+      leftSideArm.elbowPivot.rotation.z = lerp(leftSideArm.elbowPivot.rotation.z, lElbowRot.z, kLerp);
+      leftSideArm.handPivot.rotation.x = lerp(leftSideArm.handPivot.rotation.x, lHandRot.x, kLerp);
+      leftSideArm.handPivot.rotation.y = lerp(leftSideArm.handPivot.rotation.y, lHandRot.y, kLerp);
+      leftSideArm.handPivot.rotation.z = lerp(leftSideArm.handPivot.rotation.z, lHandRot.z, kLerp);
+
+      rightSideArm.armRoot.rotation.x = lerp(rightSideArm.armRoot.rotation.x, rArmRot.x, kLerp);
+      rightSideArm.armRoot.rotation.y = lerp(rightSideArm.armRoot.rotation.y, rArmRot.y, kLerp);
+      rightSideArm.armRoot.rotation.z = lerp(rightSideArm.armRoot.rotation.z, rArmRot.z, kLerp);
+      rightSideArm.elbowPivot.rotation.x = lerp(rightSideArm.elbowPivot.rotation.x, rElbowRot.x, kLerp);
+      rightSideArm.elbowPivot.rotation.y = lerp(rightSideArm.elbowPivot.rotation.y, rElbowRot.y, kLerp);
+      rightSideArm.elbowPivot.rotation.z = lerp(rightSideArm.elbowPivot.rotation.z, rElbowRot.z, kLerp);
+      rightSideArm.handPivot.rotation.x = lerp(rightSideArm.handPivot.rotation.x, rHandRot.x, kLerp);
+      rightSideArm.handPivot.rotation.y = lerp(rightSideArm.handPivot.rotation.y, rHandRot.y, kLerp);
+      rightSideArm.handPivot.rotation.z = lerp(rightSideArm.handPivot.rotation.z, rHandRot.z, kLerp);
+
+      leftSideArm.fingers.forEach((f, idx) => {
+        const typeTap = (buddyMood === 'coding') ? Math.sin(time * 22 + idx * 1.4) * 0.35 : 0;
+        f.rotation.x = lerp(f.rotation.x, -(lFingerCurl + typeTap), 0.22);
+      });
+      rightSideArm.fingers.forEach((f, idx) => {
+        let tap = 0;
+        if (buddyMood === 'coding') tap = Math.cos(time * 22 + idx * 1.4) * 0.35;
+        else if (buddyMood === 'reading' && idx === 1) tap = -0.25 + Math.sin(time * 8) * 0.15;
+        f.rotation.x = lerp(f.rotation.x, -(rFingerCurl + tap), 0.22);
+      });
+
+      legs[0].legGroup.rotation.x = lerp(legs[0].legGroup.rotation.x, legPitchL, kLerp);
+      legs[1].legGroup.rotation.x = lerp(legs[1].legGroup.rotation.x, legPitchR, kLerp);
+
+      const mouseWeight = (buddyMood === 'scanning' || buddyMood === 'reading' || buddyMood === 'creative') ? 0.2 : 1.0;
+      const targetHeadRotY = mouseTargetX * 0.42 * mouseWeight + headAddY;
+      const targetHeadRotX = -mouseTargetY * 0.32 * mouseWeight + headAddX;
+      headGroup.rotation.y = lerp(headGroup.rotation.y, targetHeadRotY, 0.09);
+      headGroup.rotation.x = lerp(headGroup.rotation.x, targetHeadRotX, 0.09);
+      headGroup.rotation.z = lerp(headGroup.rotation.z, Math.sin(time * 1.8) * 0.04 + headAddZ, 0.09);
+    }
+
+    // =========================================================================
+    // 10. MAIN ANIMATION LOOP
+    // =========================================================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (astroPaused || document.hidden) return;
+      if (stageSize()[0] !== stageW || stageSize()[1] !== stageH) fitStage();
+      const time = clock.getElapsedTime();
+
+      if (jumpVelocity !== 0 || jumpOffset > 0) {
+        jumpOffset += jumpVelocity;
+        jumpVelocity -= 0.0022;
+        if (jumpOffset <= 0) {
+          jumpOffset = 0;
+          jumpVelocity = 0;
+        }
+      }
+      const floatSpeed = (buddyMood === 'sleep') ? 1.1 : 2.2;
+      const floatOffset = Math.sin(time * floatSpeed) * 0.065 + jumpOffset;
+      buddyGroup.position.y = floatOffset;
+      floor.position.y = -1.1 - floatOffset * 0.25;
+
+      applyFullBodyKinematics(time);
+
+      eyeGazeX += (mouseTargetX - eyeGazeX) * 0.1;
+      eyeGazeY += (-mouseTargetY - eyeGazeY) * 0.1;
+
+      eyeBlinkTimer += 0.016;
+      if (eyeBlinkTimer > 3.2) {
+        eyeScaleY = Math.max(0.08, Math.sin((eyeBlinkTimer - 3.2) * 20));
+        if (eyeBlinkTimer > 3.5) {
+          eyeScaleY = 1.0;
+          eyeBlinkTimer = Math.random() * 0.8;
+        }
+      }
+
+      if (spinProgress > 0) {
+        const step = spinStep;
+        buddyGroup.rotation.y += step;
+        spinProgress -= step;
+        if (spinProgress <= 0) {
+          buddyGroup.rotation.y = 0;
+          spinProgress = 0;
+          spinStep = 0.2;
+        }
+      }
+
+      if (repulsorPulseProgress > 0) {
+        repulsorPulseProgress -= 0.03;
+        const s = 1 + (1 - repulsorPulseProgress) * 6;
+        repulsorPulseMesh.scale.set(s, s, 1);
+        repulsorPulseMesh.position.set(0, 0.1, 0.45 + (1 - repulsorPulseProgress) * 1.4);
+        repulsorPulseMesh.material.opacity = Math.max(0, repulsorPulseProgress);
+      }
+
+      cyanGlowMat.emissiveIntensity = 1.45 + Math.sin(time * 3.5) * 0.25;
+      updateFaceTexture(time);
+
+      dustParticles.rotation.y = time * 0.02;
+      renderer.render(scene, camera);
+      astroAfterRender();
+    }
+
+
+    // =========================================================================
+    // JUPITER ASTRO BUDDY API (Live screen iframe + Windows desktop overlay)
+    // =========================================================================
+    var astroPaused = false;
+    const ASTRO_STATES = new Set(['idle', 'listening', 'thinking', 'speaking', 'happy', 'sleep', 'coding', 'math',
+      'websearch', 'reading', 'memory', 'creative', 'scanning', 'debugging', 'working', 'security', 'charging',
+      'overload', 'music', 'idea', 'love', 'confused', 'shy', 'celebrate']);
+    let astroBase = 'idle';            // what Live is doing (listening / thinking / speaking / idle)
+    let astroMood = '';                // a task mood that holds while it lasts (coding, websearch, music ...)
+    let astroTransientUntil = 0;
+    let astroTransientTimer = 0;
+    let astroLastActivity = Date.now();
+    const reducedMotion = () => Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // Stunts (spin, jump, wave, eureka, celebrate): only from a quiet idle spell or a finished task, never while Live
+    // is listening / thinking / speaking, at most one per STUNT_COOLDOWN_MS, and none with reduced motion.
+    const STUNT_COOLDOWN_MS = 45000;
+    let lastStuntAt = Date.now();
+    let lastStunt = '';
+    function resetActiveStunts() {
+      spinProgress = 0;
+      jumpVelocity = 0;
+      jumpOffset = 0;
+      buddyGroup.rotation.y = 0;
+    }
+    function astroStunt(kind) {
+      if (reducedMotion() || Date.now() - lastStuntAt < STUNT_COOLDOWN_MS) return false;
+      lastStuntAt = Date.now();
+      lastStunt = kind;
+      if (kind === 'spin') spinProgress = Math.PI * 2;
+      else if (kind === 'jump') jumpVelocity = 0.045;
+      else if (kind === 'wave') waveTimer = 1.8;
+      else if (kind === 'celebrate') astroTransient('celebrate', 2200);
+      else if (kind === 'idea') astroTransient('idea', 1800);
+      return true;
+    }
+    // Marker 208: a stunt the user asked for ("Juno, spin around") happens at once (no cooldown; the asked-for move).
+    function astroRequestedStunt(kind) {
+      lastStuntAt = Date.now();
+      lastStunt = kind;
+      if (kind === 'spin') { resetActiveStunts(); spinStep = 0.08; spinProgress = Math.PI * 2; }
+      else if (kind === 'jump') { jumpVelocity = 0.045; }
+      else if (kind === 'wave') { waveTimer = 1.8; astroTransient('happy', 1800); }
+      else if (kind === 'dance') { astroTransient('celebrate', 3200); }
+      else if (kind === 'celebrate') { astroTransient('celebrate', 2400); jumpVelocity = 0.04; }
+    }
+    // Marker 210 (user, 24 Oct: "when Jupiter is idle the buddy is still doing 360"): an idle Juno stays calm. Only a
+    // small wave or "idea" now and then (at most every IDLE_STUNT_MS); spins, jumps and dances happen when asked.
+    const IDLE_STUNT_MS = 180000;
+    let lastIdleStuntAt = Date.now();
+    function checkOccasionalStunt() {
+      if (astroPaused || document.hidden || reducedMotion()) return;
+      if (astroBase !== 'idle' || astroMood || Date.now() < astroTransientUntil) return;
+      if (Date.now() - astroLastActivity < 30000 || Date.now() - lastIdleStuntAt < IDLE_STUNT_MS) return;
+      lastIdleStuntAt = Date.now();
+      const choices = ['wave', 'idea'].filter((kind) => kind !== lastStunt);            // varied, never a spin
+      const kind = choices[Math.floor(Math.random() * choices.length)] || 'wave';
+      lastStunt = kind;
+      if (kind === 'wave') waveTimer = 1.8; else astroTransient('idea', 1800);
+    }
+    setInterval(checkOccasionalStunt, 5000);
+
+    function setBuddyMood(mood) {
+      if (!ASTRO_STATES.has(mood)) mood = 'idle';
+      if (mood === buddyMood) return;
+      buddyMood = mood;
+      modeEnterTime = clock.getElapsedTime();
+      document.body.dataset.state = mood;
+    }
+    function astroResolve() {
+      if (Date.now() < astroTransientUntil) return;
+      setBuddyMood(astroMood || astroBase);
+    }
+    function astroTransient(state, ms) {
+      clearTimeout(astroTransientTimer);
+      astroTransientUntil = Date.now() + ms;
+      setBuddyMood(state);
+      astroTransientTimer = setTimeout(() => { astroTransientUntil = 0; astroResolve(); }, ms);
+    }
+    // Live state -> base pose
+    const BASE = { listening: 'listening', thinking: 'thinking', speaking: 'speaking', idle: 'idle', done: 'idle',
+                   error: 'idle', connecting: 'charging', quiet: 'sleep' };
+    // Jupiter Buddy (notch) moods -> Astro poses (the notch's mood names are kept so one payload drives both buddies)
+    const MOOD = { coding: 'coding', math: 'math', scanning: 'scanning', debugging: 'debugging', working: 'working',
+                   music: 'music', happy: 'happy', sleep: 'sleep', websearch: 'websearch', reading: 'reading',
+                   memory: 'memory', creative: 'creative', security: 'security', idle: '' };
+    // one-shot reactions (yes / no / laughing / surprise ...) -> short Astro emotes
+    const GESTURE = { nod: ['happy', 1300], shake: ['confused', 1500], laugh: ['happy', 1600], surprise: ['idea', 1500],
+                      ponder: ['thinking', 1600], tilt: ['confused', 1100], love: ['love', 2200], shy: ['shy', 2000],
+                      celebrate: ['celebrate', 2400], idea: ['idea', 1600], overload: ['overload', 2000],
+                      wave: ['idle', 1800] };
+
+    function astroApply(p) {
+      if (!p || typeof p !== 'object') return;
+      astroLastActivity = Date.now();
+      if (p.live === false) { astroBase = 'idle'; astroMood = ''; resetActiveStunts(); }
+      if (typeof p.state === 'string' && BASE[p.state]) {
+        astroBase = BASE[p.state];
+        if (['listening', 'thinking', 'speaking'].includes(astroBase)) resetActiveStunts();
+        if (p.state === 'done') astroTransient('happy', 1400);           // a smile, not a spin (marker 210)
+        if (p.state === 'error') astroTransient('confused', 1600);
+      }
+      if (typeof p.mood === 'string' && p.mood in MOOD) astroMood = MOOD[p.mood];
+      if (typeof p.astro === 'string' && ASTRO_STATES.has(p.astro)) astroMood = p.astro === 'idle' ? '' : p.astro;
+      const g = GESTURE[p.gesture] || GESTURE[p.reaction];
+      if (g) { if ((p.gesture || p.reaction) === 'wave') waveTimer = 1.8; astroTransient(g[0], g[1]); }
+      if ('user' in p || 'jupiter' in p) astroCaptions(p.user, p.jupiter);
+      if (typeof p.state === 'string' && PANEL_LABEL[p.state]) {
+        panelState = p.state; document.body.dataset.live = p.state;
+        if (!('status' in p)) panelText('pstatus', PANEL_LABEL[p.state]);
+      }
+      if ('status' in p) panelText('pstatus', String(p.status || '') || PANEL_LABEL[panelState]);
+      if ('detail' in p) panelText('pdetail', p.detail ? '· ' + String(p.detail) : '');
+      if (Array.isArray(p.checklist)) astroChecklist(p.checklist);
+      if (p.layout && typeof p.layout === 'object') astroLayout(p.layout);
+      if (typeof p.mode === 'string' && p.mode !== document.body.dataset.mode) { document.body.dataset.mode = p.mode; shape.sent = ''; shape.at = 0; }
+      if (typeof p.paused === 'boolean') astroPaused = p.paused;
+      if (typeof p.stunt === 'string') astroRequestedStunt(p.stunt);
+      astroResolve();
+    }
+    // Marker 211: the expanded panel, like Pixie's: status, the live transcript (the latest words stay in view), the
+    // task checklist and open / small / hide. Text only through textContent.
+    const PANEL_LABEL = { idle: 'Jupiter', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking',
+                          acting: 'Working', done: 'Done', error: 'Needs you' };
+    let panelState = 'idle';
+    const panelEl = document.getElementById('panel');
+    function panelText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+    function fitTail(el, text) {                                       // "…the latest words" when the line is too long
+      el.textContent = text;
+      if (!text || !el.clientWidth || el.scrollWidth <= el.clientWidth) return;
+      let lo = 0, hi = text.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        el.textContent = '…' + text.slice(mid);
+        if (el.scrollWidth <= el.clientWidth) hi = mid; else lo = mid + 1;
+      }
+      el.textContent = '…' + text.slice(lo).replace(/^\S*\s/, '');
+    }
+    const captionText = { user: '', jupiter: '' };
+    function astroCaptions(user, jupiter) {
+      if (typeof user === 'string') captionText.user = user.trim();
+      if (typeof jupiter === 'string') captionText.jupiter = jupiter.trim();
+      const u = document.getElementById('cap-user'), j = document.getElementById('cap-jupiter');
+      if (u) fitTail(u, captionText.user);
+      if (j) fitTail(j, captionText.jupiter);
+    }
+    const PANEL_ROWS = 5;                                              // = ASTRO_PANEL_ROWS on the host
+    function astroChecklist(items) {
+      const ul = document.getElementById('pchecklist');
+      if (!ul) return;
+      const clean = items.filter((c) => c && typeof c.label === 'string' && c.label.trim()).slice(0, 8);
+      const current = Math.max(0, clean.findIndex((c) => c.state !== 'done'));
+      const start = Math.max(0, Math.min(current - 1, clean.length - PANEL_ROWS));   // keep the current step in view
+      ul.replaceChildren(...clean.slice(start, start + PANEL_ROWS).map((c) => {
+        const li = document.createElement('li');
+        li.dataset.state = ['pending', 'active', 'done', 'failed'].includes(c.state) ? c.state : 'pending';
+        li.textContent = c.label;
+        return li;
+      }));
+      ul.hidden = !clean.length;
+    }
+    // Where the host put the stage (Juno's own box) and the panel inside the fixed Windows frame (logical = CSS px).
+    function astroLayout(l) {
+      const box = (v) => Array.isArray(v) && v.length === 4 && v.every((n) => Number.isFinite(Number(n))) ? v.map(Number) : null;
+      const stage = box(l.stage), panel = box(l.panel);
+      if (stage) container.style.cssText = `inset:auto;left:${stage[0]}px;top:${stage[1]}px;width:${stage[2]}px;height:${stage[3]}px`;
+      if (panel) {
+        panelEl.style.cssText = `left:${panel[0]}px;top:${panel[1]}px;width:${panel[2]}px;height:${panel[3]}px`;
+        document.body.dataset.panel = l.side === 'above' ? 'above' : 'below';
+        requestAnimationFrame(() => astroCaptions());                 // re-fit the lines once the panel is laid out
+      } else {
+        delete document.body.dataset.panel;
+      }
+      shape.sent = ''; shape.at = 0;                                   // the next frame re-measures at once
+    }
+    // Same entry points as the Jupiter Buddy notch page, so the Windows host drives either buddy unchanged.
+    window.setNotch = astroApply;
+    window.wakeNotch = () => { waveTimer = 1.8; astroTransient('happy', 1200); };
+    window.setAstro = astroApply;
+    window.addEventListener('message', (event) => {
+      if (event.source !== window.parent || !event.data || event.data.type !== 'astro') return;
+      astroApply(event.data);
+    });
+    // a long quiet spell: low-power hover (any update wakes it)
+    setInterval(() => { if (astroBase === 'idle' && !astroMood && Date.now() - astroLastActivity > 75000) setBuddyMood('sleep'); }, 5000);
+    // Moving it (marker 205): drag in any direction with a mouse, a touchpad, a finger or a pen. Windows overlay -> the
+    // host moves the window (mouse: it follows the cursor itself; touch / pen: from this page's pointer moves, which keep
+    // coming while the finger is down); Live-screen iframe -> the parent page moves the dock (astro-drag messages, kept
+    // inside the Live stage). Double-click / double-tap = back to the centre. Windows click / tap (no drag) = expand /
+    // shrink, as with the Jupiter Buddy. touch-action: none (CSS) stops Windows / Android from turning a finger drag
+    // into a scroll that cancels the drag (18-23 Oct: the Astro could not be pulled on the touchscreen).
+    (function hostControls() {
+      const api = () => window.pywebview && window.pywebview.api;
+      const embedded = window.parent !== window;
+      const toParent = (message) => { if (embedded) window.parent.postMessage(message, '*'); };
+      let down = null, moved = false, lastTap = 0;
+      document.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button') || e.isPrimary === false) return;     // a lost pointerup never blocks later presses
+        down = { x: e.screenX, y: e.screenY, sx: e.screenX, sy: e.screenY, id: e.pointerId,
+                 panel: Boolean(e.target.closest('#panel')) }; moved = false;
+        if (api() && api().drag_begin) {
+          api().drag_begin(e.clientX / innerWidth, e.clientY / innerHeight, e.pointerType || 'mouse', innerWidth, innerHeight);
+        }
+        try { document.documentElement.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      });
+      document.addEventListener('pointermove', (e) => {
+        if (down === null || e.pointerId !== down.id) return;
+        const dx = e.screenX - down.x, dy = e.screenY - down.y;
+        if (!moved && Math.abs(e.screenX - down.sx) < 4 && Math.abs(e.screenY - down.sy) < 4) return;
+        moved = true; down.x = e.screenX; down.y = e.screenY;
+        if (api() && api().drag_follow) api().drag_follow(e.screenX - down.sx, e.screenY - down.sy);
+        else if (api() && api().drag) api().drag(dx, dy);
+        else toParent({ type: 'astro-drag', dx, dy });
+      });
+      const end = (e) => {
+        if (down === null || (e && e.pointerId !== down.id)) return;
+        const wasDrag = moved, last = down; down = null;
+        if (api() && api().drag_end) {
+          if (wasDrag && api().drag_follow && e) api().drag_follow(e.screenX - last.sx, e.screenY - last.sy);
+          api().drag_end();
+        } else if (wasDrag) toParent({ type: 'astro-drag-end' });
+        if (wasDrag || last.panel) return;
+        const now = Date.now();
+        if (now - lastTap < 320) {                                     // double-click / double-tap: recentre
+          lastTap = 0;
+          if (api() && api().recenter) api().recenter(); else toParent({ type: 'astro-recenter' });
+          return;
+        }
+        lastTap = now;
+        if (!api()) return;
+        setTimeout(() => {                                             // single click (not the first half of a double)
+          if (lastTap !== now) return;
+          if (document.body.dataset.mode === 'expanded') api().collapse && api().collapse(); else api().expand && api().expand();
+        }, 330);
+      };
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+      document.querySelectorAll('[data-host]').forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation(); const fn = b.dataset.host; api() && api()[fn] && api()[fn]();
+      }));
+    })();
+
+    // Windows overlay (marker 205): WebView2 cannot show the desktop through a transparent page (it painted the
+    // window's own white/grey background, user screenshot 18 Oct). The window is clipped instead to the astronaut's own
+    // pixels (plus the open panel): one bit per canvas pixel, no margin (a margin showed the window's dark colour as a
+    // black outline), refreshed about 30 times a second so moving arms are not clipped. Rows are sent as runs
+    // [row, firstCol, lastCol] on a grid of the whole window at the canvas's pixel density (marker 211: the canvas is
+    // only Juno's stage box); Juno's own runs come first (figure_runs), so "make small" can drop the panel at once.
+    const SHAPE_ALPHA = 110;                                           // half-transparent edge pixels stay outside
+    const PANEL_RADIUS = 16;                                           // = #panel border-radius
+    const shape = { at: 0, sent: '', busy: false, buf: null };
+    function pushRoundRect(runs, r, k, cols, rows) {                   // a rounded card, no dark square corners
+      const l = r.left * k, t = r.top * k, rt = r.right * k, b = r.bottom * k;
+      const rad = Math.min(PANEL_RADIUS * k, (rt - l) / 2, (b - t) / 2);
+      for (let row = Math.max(0, Math.floor(t)); row < Math.min(rows, Math.ceil(b)); row += 1) {
+        const yc = row + 0.5;
+        const dy = yc < t + rad ? t + rad - yc : yc > b - rad ? yc - (b - rad) : 0;
+        const inset = dy > 0 ? rad - Math.sqrt(Math.max(0, rad * rad - dy * dy)) : 0;
+        const a = Math.max(0, Math.round(l + inset)), z = Math.min(cols - 1, Math.round(rt - inset) - 1);
+        if (z >= a) runs.push(row, a, z);
+      }
+    }
+    function astroAfterRender() {
+      if (!document.body.classList.contains('desk')) return;
+      const host = api();
+      if (!host || !host.shape || shape.busy) return;
+      const now = performance.now();
+      if (now - shape.at < 33) return;
+      shape.at = now;
+      const gl = renderer.getContext();
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+      if (!w || !h) return;
+      if (!shape.buf || shape.buf.length !== w * h * 4) shape.buf = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, shape.buf);
+      const box = container.getBoundingClientRect();
+      const k = w / Math.max(1, box.width);                            // canvas pixels per CSS px
+      const ox = Math.round(box.left * k), oy = Math.round(box.top * k);
+      const cols = Math.max(w + ox, Math.round(innerWidth * k)), rows = Math.max(h + oy, Math.round(innerHeight * k));
+      const runs = [];
+      for (let y = 0; y < h; y += 1) {
+        const row = h - 1 - y, base = y * w * 4;                       // GL rows start at the bottom
+        let start = -1;
+        for (let x = 0; x <= w; x += 1) {
+          const on = x < w && shape.buf[base + x * 4 + 3] > SHAPE_ALPHA;
+          if (on && start < 0) start = x;
+          if (!on && start >= 0) { runs.push(row + oy, start + ox, x - 1 + ox); start = -1; }
+        }
+      }
+      const figureRuns = runs.length / 3;
+      if (panelEl && panelEl.getClientRects().length) pushRoundRect(runs, panelEl.getBoundingClientRect(), k, cols, rows);
+      const payload = { cols, rows, runs, rects: [], figure_runs: figureRuns };
+      const key = runs.join(',');
+      if (key === shape.sent) return;
+      shape.sent = key; shape.busy = true;
+      Promise.resolve(host.shape(payload)).catch(() => {}).then(() => { shape.busy = false; });
+    }
+    function api() { return window.pywebview && window.pywebview.api; }
+    document.body.dataset.state = 'idle';
+    window.parent !== window && window.parent.postMessage({ type: 'astro-ready' }, '*');
+
+    animate();
+
+    // marker 205: a page loaded at 0x0 (hidden window / iframe not laid out yet) used to keep a 0x0 canvas until a
+    // resize event, so nothing was drawn; animate() now refits whenever the stage differs from the canvas.
+    // Marker 211: the stage is the canvas box - the whole page in the Live screen, a fixed box of the Windows frame
+    // (so Juno keeps his size and place when the panel opens; the old wide expanded view re-framed him bigger).
+    var stageW = -1, stageH = -1;
+    function stageSize() { return [container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight]; }
+    function fitStage() {
+      [stageW, stageH] = stageSize();
+      const aspect = Math.max(0.3, stageW / Math.max(1, stageH));
+      camera.aspect = aspect;
+      camera.position.z = aspect < 1 ? 4.45 + (1 - aspect) * 2.6 : 4.45;   // portrait docks: keep props in frame
+      camera.lookAt(0, 0.32, 0);
+      camera.updateProjectionMatrix();
+      renderer.setSize(stageW, stageH);
+    }
+    window.addEventListener('resize', fitStage);
+    fitStage();
+  
+  }
+</script>
+</body>
+</html>

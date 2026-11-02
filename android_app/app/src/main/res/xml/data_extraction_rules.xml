@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same rule for Android 12+: the per-device Jupiter call identity never moves to another phone. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="jupiter_calls.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="jupiter_calls.xml" />
+    </device-transfer>
+</data-extraction-rules>

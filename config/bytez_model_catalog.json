@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "provider": "bytez",
+  "state": "NOT_DISCOVERED",
+  "refreshed_at": null,
+  "refresh_after_hours": 24,
+  "error": "BYTEZ_CATALOG_UNAVAILABLE",
+  "records": [],
+  "summary": {
+    "total_catalog_models": null,
+    "free_account_eligible_models": null,
+    "count_by_task": {},
+    "free_eligible_by_task": {},
+    "count_by_capability_group": {},
+    "free_eligible_by_capability_group": {},
+    "top_candidates": {}
+  },
+  "inference_calls": 0
+}

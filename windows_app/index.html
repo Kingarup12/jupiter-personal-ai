@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0F111A">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Jupiter</title>
+    <script src="frontend_version.js?v=222-notifications-r1"></script>
+  <script>
+    // Keep startup failures diagnosable instead of leaving the splash screen
+    // indefinitely when the bundled frontend cannot parse or initialize.
+    window.__JUPITER_FRONTEND_READY__ = false;
+    window.__jupiterShowStartupFailure = () => {
+      if (window.__JUPITER_FRONTEND_READY__) return;
+      const splash = document.getElementById('splash-screen');
+      const panel = document.getElementById('startup-failure-panel');
+      if (splash) splash.classList.add('startup-failed');
+      if (panel) panel.hidden = false;
+    };
+    window.addEventListener('error', (event) => {
+      const target = event?.target;
+      const scriptFailure = target && target.tagName === 'SCRIPT' && /app\.js(?:[?#]|$)/.test(target.src || '');
+      if (!window.__JUPITER_FRONTEND_READY__ && (scriptFailure || event?.error)) window.__jupiterShowStartupFailure();
+    }, true);
+    window.addEventListener('unhandledrejection', () => {
+      if (!window.__JUPITER_FRONTEND_READY__) window.__jupiterShowStartupFailure();
+    });
+    const jupiterFrontendVersion = window.JUPITER_FRONTEND_VERSION || 'unversioned';
+    const isMobileEnv = /; wv\)/.test(navigator.userAgent) || window.location.pathname.includes('/mobile') || window.location.search.includes('client=android');
+    const manifestFile = isMobileEnv ? 'manifest-mobile.json' : 'manifest.json';
+    document.write(`<link rel="manifest" href="${manifestFile}?v=${encodeURIComponent(jupiterFrontendVersion)}">`);
+    document.write(`<link rel="stylesheet" href="style.css?v=${encodeURIComponent(jupiterFrontendVersion)}">`);
+    // Keep core controls available in Android WebView even when a third-party
+    // CDN is unavailable.  These are the same Phosphor icon variants already
+    // used by Jupiter's existing markup.
+    document.write(`<link rel="stylesheet" href="assets/phosphor/regular/style.css?v=${encodeURIComponent(jupiterFrontendVersion)}">`);
+    document.write(`<link rel="stylesheet" href="assets/phosphor/fill/style.css?v=${encodeURIComponent(jupiterFrontendVersion)}">`);
+    document.write(`<link rel="stylesheet" href="assets/phosphor/bold/style.css?v=${encodeURIComponent(jupiterFrontendVersion)}">`);
+    document.write(`<link rel="stylesheet" href="assets/phosphor/light/style.css?v=${encodeURIComponent(jupiterFrontendVersion)}">`);
+
+    // Suppress PWA install prompt when running natively in Jupiter WT
+    window.addEventListener('beforeinstallprompt', (e) => {
+      if (window.chrome && window.chrome.webview) {
+        e.preventDefault();
+      }
+    });
+  </script>
+  <!-- Single approved Jupiter logo design. Every icon below is a derivative of
+       assets/branding/jupiter-logo-master.png; never point these at a second
+       logo design. Regenerate with scripts/generate_branding_derivatives.py. -->
+  <link rel="icon" href="assets/branding/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/branding/jupiter-icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/branding/jupiter-icon-512.png">
+  <link rel="apple-touch-icon" href="assets/branding/jupiter-icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="loading">
+  <script>
+    // Android WebView must hold the opening animation at its first frame until
+    // the page has painted once. Otherwise its short opening star can spend
+    // most of its timeline behind parsing and synchronous startup work.
+    const jupiterMobileClient = /; wv\)/.test(navigator.userAgent)
+      || window.location.pathname.includes('/mobile')
+      || new URLSearchParams(window.location.search).get('client') === 'android';
+    window.__JUPITER_MOBILE_CLIENT__ = jupiterMobileClient;
+    if (jupiterMobileClient) {
+      document.body.classList.add('mobile-client');
+      document.addEventListener('DOMContentLoaded', () => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => document.body.classList.add('mobile-splash-running'));
+        });
+      });
+    }
+  </script>
+    <!-- Persistent Universe Background -->
+  <div class="universe-bg">
+    <div class="stars"></div>
+    <div class="stars2"></div>
+    <div class="shooting-star ss-1"></div>
+    <div class="shooting-star ss-2"></div>
+    <div class="shooting-star ss-3"></div>
+    <div class="mega-shooting-star"></div>
+    <div class="space-element purple-astronaut"><img src="assets/purple_astronaut.png" alt="Purple Astronaut"></div>
+    <div class="space-element blue-astronaut"><img src="assets/blue_astronaut.png" alt="Blue Astronaut"></div>
+    <div class="space-element ufo-custom"><img src="assets/ufo_custom.png" alt="UFO Custom"><div class="ufo-beam"></div></div>
+  </div>
+
+  <!-- Splash Screen -->
+    <div id="splash-screen" class="splash-screen">
+      
+      <div class="splash-content">
+        <div class="splash-logo-container">
+          <div class="splash-glow"></div>
+          <svg id="logo-stroke" class="splash-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="120" height="120" style="position: absolute;">
+              <rect width="256" height="256" fill="none"/>
+              <circle cx="128" cy="128" r="88" fill="none" stroke="var(--primary-color)" stroke-linecap="round" stroke-linejoin="round" stroke-width="16" class="draw-path" />
+              <path d="M184.76,60.75c27.13-7.21,47.41-6.45,53.44,3.94,11,18.93-29.45,62.61-90.32,97.58s-119.1,48-130.08,29c-6.05-10.43,3.51-28.37,23.49-48.23" fill="none" stroke="var(--primary-color)" stroke-linecap="round" stroke-linejoin="round" stroke-width="16" class="draw-path" />
+            </svg>
+            <i id="logo-filled" class="ph-fill ph-planet splash-logo"></i>
+            <img id="mobile-splash-logo" src="assets/branding/jupiter-icon-192.png" class="splash-logo" style="display: none; width: 120px; height: 120px; object-fit: contain;">
+        </div>
+        <div class="splash-title-container">
+          <h1 class="splash-title">Jupiter</h1>
+          <span class="splash-author">by the project creator</span>
+        </div>
+        <p id="splash-reconnect-status" class="splash-reconnect-status" role="status" aria-live="polite" hidden>Reconnecting to Jupiter… you're still signed in.</p>
+        <div id="startup-failure-panel" class="startup-failure-panel" hidden role="alert">
+          <span>Jupiter could not finish loading.</span>
+          <button type="button" class="secondary-btn" onclick="window.location.reload()">Reload</button>
+        </div>
+        
+        <div id="splash-auth-buttons" class="hidden" style="margin-top: 2.5rem; display: flex; gap: 2.5rem; justify-content: center;">
+          <button class="primary-btn" id="btn-splash-lets-go" style="padding: 0.8rem 2.5rem; font-size: 1.1rem; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; border-radius: 25px; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.2); box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);">Let's go</button>
+        </div>
+        
+      </div>
+    </div>
+
+  <div id="sidebar-overlay" class="overlay hidden"></div>
+  
+  <aside id="sidebar" class="sidebar closed">
+    <div class="sidebar-header">
+      <div class="brand">
+        <i class="ph-fill ph-planet brand-icon jupiter-logo-float"></i>
+        <div style="display:flex; flex-direction:column; line-height:1.1;">
+          <span>Jupiter</span>
+          <span style="font-size: 0.6em; color: var(--text-muted); font-weight: normal;">by the project creator</span>
+        </div>
+      </div>
+      <button id="close-sidebar" class="icon-btn" aria-label="Close sidebar" style="margin-left: auto; position: relative; z-index: 10;"><i class="ph ph-x" aria-hidden="true"></i></button>
+    </div>
+    
+    <div class="sidebar-content">
+        <button id="btn-new-chat" class="primary-btn" style="width: 100%; margin-bottom: 2px; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.95rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; color: white;">
+          <i class="ph ph-plus"></i> New Chat
+        </button>
+
+      <div class="search-box" style="margin-bottom: 2px;">
+        <i class="ph ph-magnifying-glass"></i>
+        <input type="text" placeholder="Search chats..." id="search-input">
+      </div>
+
+      <div class="history-section">
+        <h3 class="section-title" style="margin-bottom: 10px;"><i class="ph-fill ph-push-pin" style="color:var(--primary-color)"></i> Pinned Chats</h3>
+        <ul id="pinned-list" class="history-list">
+          <!-- Populated by JS -->
+        </ul>
+      </div>
+
+      <div class="history-section">
+        <h3 class="section-title" style="margin-bottom: 10px;"><i class="ph-fill ph-chats" style="color:var(--primary-color)"></i> Recent Chats</h3>
+        <ul id="history-list" class="history-list">
+          <!-- Populated by JS -->
+        </ul>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+        <div id="admin-controls" class="privileged-controls hidden">
+          <button id="btn-testing-mode" class="sidebar-row-btn testing-mode-btn">
+            <div><i class="ph ph-flask"></i> Testing Mode</div>
+          </button>
+          <section id="power-accordion" class="power-accordion hidden" aria-label="Power tools">
+            <button id="power-accordion-toggle" class="power-accordion-header" type="button" aria-expanded="false" aria-controls="power-accordion-content">
+              <span class="power-header-spacer" aria-hidden="true"></span>
+              <span class="power-header-title-group"><i id="power-role-icon" class="ph ph-crown" aria-hidden="true"></i><span id="power-accordion-title">Owner Power</span></span>
+              <i class="ph ph-caret-right power-accordion-caret" aria-hidden="true"></i>
+            </button>
+            <div id="power-accordion-content" class="power-accordion-content" role="region" aria-labelledby="power-accordion-toggle" aria-hidden="true" inert>
+              <div class="power-accordion-inner">
+                <section id="owner-power" class="privileged-power-panel hidden" aria-label="Owner Power">
+                  <div class="sidebar-power-actions" data-power-action-list="owner" aria-label="Pinned Owner Power actions"></div>
+                  <span id="model-refresh-status" class="model-refresh-status" data-model-refresh-status role="status" aria-live="polite"></span>
+                </section>
+                <section id="admin-power" class="privileged-power-panel hidden" aria-label="Admin Power">
+                  <div class="sidebar-power-actions" data-power-action-list="admin" aria-label="Pinned Admin Power actions"></div>
+                </section>
+              </div>
+            </div>
+          </section>
+          <div id="test-role-switcher" class="mode-switcher hidden" data-mode-switcher role="radiogroup" aria-label="Choose testing view" aria-orientation="horizontal">
+            <button id="btn-test-role-owner" class="mode-segment mode-owner" type="button" role="radio" aria-checked="false" data-role-option="owner"><span>Owner Mode</span></button>
+            <button id="btn-test-role-admin" class="mode-segment mode-admin" type="button" role="radio" aria-checked="false" data-role-option="admin"><span>Admin Mode</span></button>
+            <button id="btn-test-role-user" class="mode-segment mode-user" type="button" role="radio" aria-checked="false" data-role-option="user"><span>User View</span></button>
+          </div>
+          <div id="owner-view-switcher" class="mode-switcher hidden" data-mode-switcher role="radiogroup" aria-label="Choose account view" aria-orientation="horizontal">
+            <button id="btn-toggle-owner" class="mode-segment mode-owner" type="button" role="radio" aria-checked="false" data-role-option="owner"><span>Owner Mode</span></button>
+            <button id="btn-toggle-user" class="mode-segment mode-user" type="button" role="radio" aria-checked="false" data-role-option="user"><span>User View</span></button>
+          </div>
+        </div>
+      <div id="profile-btn" class="profile-btn">
+        <div class="profile-avatar"><img id="profile-avatar-img" class="profile-photo-image hidden" alt="" style="width: 100%; height: 100%; object-fit: cover; display: none;" /><i class="ph-fill ph-user"></i></div>
+          <div class="profile-info" style="flex-direction: row; align-items: center; gap: 8px;">
+            <span class="profile-name" id="display-username">User</span>
+            <span id="owner-badge" class="owner-badge hidden">OWNER</span>
+          </div>
+        <i class="ph ph-caret-up"></i>
+      </div>
+    </div>
+  </aside>
+
+  <main id="main-content" class="app-main">
+    <header class="app-header glass">
+      <button type="button" id="open-sidebar" class="icon-btn" aria-label="Open sidebar" title="Open sidebar"><i class="ph ph-list" aria-hidden="true"></i></button>
+      
+      <div class="center-brand">
+        <i class="ph-fill ph-planet brand-header-logo jupiter-logo-float"></i>
+        <div class="brand-text-col">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span class="title" style="line-height: 1;">Jupiter</span>
+            <div id="universal-status-indicator" style="display: flex; align-items: center; gap: 4px;">
+              <span id="universal-status-dot" style="width: 6px; height: 6px; border-radius: 50%; background-color: #2ed573;"></span>
+              <span id="universal-status-text" style="font-size: 0.75rem; color: #2ed573; font-weight: 600; line-height: 1;">Online</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="right-header-controls" style="display:flex; align-items:center; gap: 15px;">
+        <button type="button" id="header-update-badge" class="hidden release-update-badge" aria-label="New Jupiter update available">
+          <i class="ph ph-download-simple" aria-hidden="true"></i> Update
+        </button>
+        
+        <div id="admin-metrics" class="hidden" style="display: flex; align-items: center; gap: 10px;">
+            <div class="load-chip" id="users-online-chip">
+              <span class="load-level" id="users-online-val">-- USERS</span>
+              <span class="load-detail" id="users-online-detail">Online</span>
+              <span id="owner-registration-unread-badge" class="owner-registration-unread-badge hidden" aria-label="No new registration requests">0</span>
+            </div>
+            <div class="load-chip" id="load-chip">
+              <span class="load-level" id="load-level">--</span>
+              <span class="load-detail" id="load-detail">Server Load</span>
+            </div>
+        </div>
+      </div>
+    </header>
+    
+    <div id="testing-mode-banner" class="hidden" style="background: rgba(255,159,67,0.1); border-bottom: 1px solid rgba(255,159,67,0.3); padding: 8px 20px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #ff9f43; font-size: 0.85rem; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+          <i id="testing-info-icon" class="ph-fill ph-warning-circle" style="cursor: pointer; font-size: 1.1rem; transition: transform 0.2s;" title="Testing Mode Info"></i>
+          Temporary Testing Session
+        </span>
+        <button id="btn-exit-testing" style="background: #ff9f43; color: #1a1a1a; border: none; padding: 4px 12px; border-radius: 4px; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: 0.2s;">Exit Testing Mode</button>
+    </div>
+
+    <!-- Testing Mode Info Popover -->
+    <div id="testing-info-popover" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+      <div style="width: 320px; background: rgba(15, 23, 42, 1); border: 1px solid rgba(255,159,67,0.5); border-radius: 12px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.8);">
+        <h3 style="color: #ff9f43; font-size: 1rem; display: flex; align-items: center; gap: 6px; margin-bottom: 12px; margin-top: 0;"><i class="ph-fill ph-warning-circle"></i> Temporary Testing Session</h3>
+        <div style="font-size: 0.85rem; color: white; line-height: 1.5; margin-bottom: 20px;">
+          <p style="margin-top:0; margin-bottom: 10px; color: var(--text-secondary);">Available to: Owner and Admin</p>
+          <p style="margin-top:0; margin-bottom: 10px;">During Testing Mode:</p>
+          <ul style="padding-left: 18px; margin: 0; display: flex; flex-direction: column; gap: 6px;">
+            <li>existing saved memories may be read</li>
+            <li>current temporary conversation context may be used</li>
+            <li>new persistent memories are NOT saved</li>
+            <li>existing memories are NOT modified</li>
+            <li>testing conversation is NOT added to Recent Chats</li>
+            <li>testing conversation is NOT synced as a persistent chat</li>
+            <li>temporary conversation is discarded when Testing Mode ends</li>
+            <li>opening a saved chat or switching roles automatically exits Testing Mode</li>
+          </ul>
+        </div>
+        <button id="btn-close-testing-info" style="width: 100%; padding: 10px; background: rgba(255,159,67,0.2); border: 1px solid rgba(255,159,67,0.5); border-radius: 6px; color: #ff9f43; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: 0.2s;">Got it</button>
+      </div>
+    </div>
+    
+    <div id="toast-container" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
+    <div class="chat-container" id="chat-container">
+      <div class="welcome-message" id="normal-welcome">
+        <div class="icon-glow">
+          <i class="ph-fill ph-planet welcome-icon"></i>
+        </div>
+        <h2>Jupiter AI</h2>
+        <p>Your intelligent assistant is ready.</p>
+      </div>
+      
+      <div class="welcome-message hidden" id="testing-welcome">
+        <div class="icon-glow" style="background: rgba(255,159,67,0.1); border-color: rgba(255,159,67,0.3); color: #ff9f43; margin: 0 auto 20px;">
+          <i class="ph-fill ph-flask welcome-icon"></i>
+        </div>
+        <h2 style="color: #ff9f43;">Testing Mode</h2>
+        <p style="max-width: 400px; margin: 0 auto;">Test Jupiter with your existing memories without saving this conversation or creating new memories.</p>
+      </div>
+    </div>
+
+    <div class="input-area glass">
+      <div class="voice-controls hidden" id="voice-controls">
+        <div class="recording-indicator">
+          <div class="audio-visualizer">
+            <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+          </div>
+          <i id="voice-cleanup-spinner" class="ph ph-spinner ph-spin voice-cleanup-spinner hidden" aria-hidden="true"></i>
+          <span id="voice-status-text" role="status" aria-live="polite">Listening...</span>
+        </div>
+        <div class="voice-actions">
+          <button id="cancel-voice" type="button" class="icon-btn action-btn danger" aria-label="Cancel voice input"><i class="ph ph-x"></i></button>
+          <button id="confirm-voice" type="button" class="icon-btn action-btn success" aria-label="Confirm voice transcript"><i class="ph ph-check"></i></button>
+        </div>
+      </div>
+
+      <div id="attachment-staging" class="attachment-staging hidden" aria-live="polite"></div>
+      <section id="quick-clarification" class="quick-clarification hidden" aria-live="polite" aria-labelledby="quick-clarification-title">
+        <header><span><i class="ph ph-lightning" aria-hidden="true"></i><strong id="quick-clarification-title">Quick Clarification</strong></span><time id="quick-clarification-countdown">15s</time></header>
+        <p id="quick-clarification-question"></p>
+        <div id="quick-clarification-choices" class="quick-clarification-choices"></div>
+        <div class="quick-clarification-other hidden" id="quick-clarification-other-wrap"><input id="quick-clarification-other" type="text" maxlength="500" placeholder="Add another preference…" autocomplete="off"><button id="quick-clarification-proceed" type="button">Proceed</button></div>
+      </section>
+      <div class="input-wrapper" id="normal-input">
+        <button id="attachment-menu-button" class="icon-btn attachment-plus-btn" type="button" aria-label="Add attachment" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-plus"></i></button>
+        <div id="capability-staging" class="composer-capability-staging hidden" aria-live="polite"></div>
+        <textarea id="message-input" rows="1" placeholder="Type here to chat..." autocomplete="off" inputmode="text" enterkeyhint="enter" aria-label="Message Jupiter"></textarea>
+        <button id="mic-btn" class="icon-btn voice-btn" type="button" aria-label="Start voice input" aria-pressed="false"><i class="ph-fill ph-microphone"></i></button>
+        <button id="send-btn" class="icon-btn send-btn"><i class="ph-fill ph-paper-plane-right"></i></button>
+      </div>
+      <input id="attachment-file-input" type="file" hidden multiple accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v,image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv,application/json,application/xml,text/html,.py,.js,.ts,.css,.yml,.yaml">
+    </div>
+    <div id="attachment-drop-overlay" class="attachment-drop-overlay hidden" aria-hidden="true">
+      <div><i class="ph ph-file-arrow-down"></i><span>Drop files to add</span></div>
+    </div>
+  </main>
+
+  <section id="live-voice-overlay" class="live-voice-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="live-voice-title" aria-hidden="true">
+    <video id="live-camera-video" class="live-camera-video" playsinline muted autoplay aria-hidden="true" hidden></video>
+    <div id="live-visual-labels" class="live-visual-labels" aria-hidden="true" hidden></div>
+    <div class="live-voice-shell">
+      <header class="live-voice-header">
+        <h2 id="live-voice-title">Jupiter Neural Orb</h2>
+        <p id="live-voice-subtitle" class="live-voice-subtitle">3D Volumetric Prototype</p>
+        <p id="live-voice-state" class="live-voice-state" aria-live="polite">Idle</p>
+      </header>
+      <div id="live-call-bar" class="live-call-bar" role="status" aria-live="polite" hidden>
+        <span class="live-call-dot" aria-hidden="true"></span>
+        <span class="live-call-label"><strong id="live-call-status">Connecting…</strong><span id="live-call-duration" class="live-call-duration" aria-label="Call duration">0:00</span></span>
+        <label class="live-call-output" id="live-call-output-wrap" hidden><span class="live-sr-only">Audio output</span>
+          <i class="ph ph-speaker-high" aria-hidden="true"></i>
+          <select id="live-call-output" title="Choose where you hear Jupiter"></select>
+        </label>
+      </div>
+      <div id="live-screen-indicator" class="live-screen-indicator" role="status" aria-live="polite" hidden>
+        <span class="live-screen-dot" aria-hidden="true"></span><span>Sharing your screen</span>
+        <button id="live-screen-stop" type="button" class="live-screen-stop" aria-label="Stop sharing your screen">Stop</button>
+      </div>
+      <div class="live-voice-orb-wrap" aria-label="Jupiter Neural Orb, idle">
+        <canvas id="live-voice-orb-canvas" width="1000" height="1000"></canvas>
+      </div>
+      <section class="live-voice-transcript" aria-labelledby="live-voice-response-label">
+        <div class="live-voice-speaker" id="live-voice-response-label">Live transcript</div>
+        <div id="live-voice-response" class="live-voice-response" aria-live="polite">
+          <p class="live-voice-placeholder">Jupiter's responses will appear here.</p>
+        </div>
+      </section>
+      <section id="live-input-monitor" class="live-input-status-line" aria-label="Live voice input status">
+        <span class="live-input-divider" aria-hidden="true"></span>
+        <span id="live-input-monitor-preview" class="live-input-monitor-preview" aria-live="polite" hidden></span>
+        <span id="live-voice-session-status" class="live-voice-session-status" role="status" aria-live="polite" hidden></span>
+        <div id="live-system-audio-status" class="live-system-audio-status" role="status" hidden>
+          <i class="ph ph-waveform" aria-hidden="true"></i><span>System audio active</span>
+        </div>
+      </section>
+      <div id="live-voice-microphone-status" class="live-voice-microphone-status" role="status" aria-live="polite" hidden>
+        <strong>Tap Unmute before speaking.</strong>
+      </div>
+      <div id="live-camera-notice" class="live-camera-notice" role="status" aria-live="polite" hidden></div>
+      <div id="live-camera-unavailable" class="live-camera-unavailable" role="status" aria-live="polite" hidden>
+        <i class="ph ph-video-camera-slash" aria-hidden="true"></i>
+        <strong>Camera unavailable</strong>
+        <span id="live-camera-unavailable-detail">Open your camera shutter or check permission.</span>
+        <button id="live-camera-retry" type="button" class="live-camera-retry">Retry</button>
+      </div>
+      <div id="live-camera-tools" class="live-camera-tools" role="group" aria-label="Camera controls" hidden>
+        <button id="live-camera-flip" type="button" class="live-camera-tool" aria-label="Flip camera"><i class="ph ph-camera-rotate" aria-hidden="true"></i><span>Flip</span></button>
+        <button id="live-camera-torch" type="button" class="live-camera-tool" aria-label="Turn flashlight on" aria-pressed="false" hidden><i class="ph ph-flashlight" aria-hidden="true"></i><span>Torch</span></button>
+      </div>
+      <div class="live-voice-controls" role="group" aria-label="Live controls">
+        <button id="live-camera-toggle" type="button" class="live-camera-toggle-btn" aria-label="Turn camera on" aria-pressed="false">
+          <i class="ph ph-video-camera" aria-hidden="true"></i><span>Camera</span>
+        </button>
+        <button id="live-screen-toggle" type="button" class="live-screen-toggle-btn" aria-label="Share your screen" aria-pressed="false" hidden>
+          <i class="ph ph-screencast" aria-hidden="true"></i><span>Share screen</span>
+        </button>
+        <button id="live-camera-transcript-toggle" type="button" class="live-transcript-toggle-btn" aria-label="Show transcript" aria-pressed="false">
+          <i class="ph ph-subtitles" aria-hidden="true"></i><span>Transcript</span>
+        </button>
+        <button id="live-keyboard-toggle" type="button" class="live-keyboard-toggle-btn" aria-label="Show typing controls" aria-expanded="false" hidden>
+          <i class="ph ph-keyboard" aria-hidden="true"></i><span>Type</span>
+        </button>
+        <button id="live-more-toggle" type="button" class="live-more-toggle-btn" aria-label="More Live options" aria-haspopup="menu" aria-expanded="false" aria-controls="live-more-menu">
+          <i class="ph ph-dots-three" aria-hidden="true"></i><span>More</span>
+        </button>
+      </div>
+      <div id="live-more-menu" class="live-more-menu" role="menu" aria-label="More Live options" hidden>
+        <p class="live-more-heading" aria-hidden="true">Transcript text</p>
+        <button type="button" role="menuitemradio" aria-checked="false" data-live-text-size="small">Small</button>
+        <button type="button" role="menuitemradio" aria-checked="true" data-live-text-size="medium">Medium</button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-live-text-size="large">Large</button>
+        <hr aria-hidden="true">
+        <button type="button" role="menuitem" data-live-action="copy-transcript"><i class="ph ph-copy" aria-hidden="true"></i>Copy transcript</button>
+      </div>
+      <div id="live-composer-hint" class="live-composer-hint" role="status" aria-live="polite" hidden></div>
+      <form id="live-composer" class="live-composer-row" autocomplete="off">
+        <div class="live-composer-field">
+          <label for="live-composer-input" class="live-sr-only">Message Jupiter</label>
+          <textarea id="live-composer-input" rows="1" maxlength="2000" placeholder="Ask Jupiter anything…" enterkeyhint="send"></textarea>
+          <button id="live-composer-send" type="submit" class="live-composer-send" aria-label="Send message" disabled><i class="ph ph-arrow-up" aria-hidden="true"></i></button>
+        </div>
+        <button id="live-voice-mute" type="button" class="live-voice-mute-btn" aria-label="Mute Live Voice" aria-pressed="false">
+          <i class="ph ph-microphone" aria-hidden="true"></i><span>Mute</span>
+        </button>
+        <button id="end-live-voice" type="button" class="end-live-voice-btn" aria-label="End Live Voice">
+          <i class="ph ph-phone-disconnect" aria-hidden="true"></i><span>End Live</span>
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <section id="jupiter-call-incoming" class="jupiter-call-incoming" role="alertdialog" aria-modal="true" aria-labelledby="jupiter-call-title" aria-describedby="jupiter-call-reason" hidden>
+    <div class="jupiter-call-card">
+      <img class="jupiter-call-banner" src="assets/calls/jupiter_caller_banner.webp" alt="" aria-hidden="true" width="720" height="1080" decoding="async">
+      <p class="jupiter-call-eyebrow"><img class="jupiter-call-logo" src="assets/calls/jupiter_caller_logo.png" alt="" width="28" height="28">Incoming Jupiter call</p>
+      <h2 id="jupiter-call-title" class="live-sr-only">Jupiter</h2>
+      <div class="jupiter-call-spacer" aria-hidden="true"></div>
+      <p id="jupiter-call-reason" class="jupiter-call-reason">Jupiter is calling</p>
+      <p id="jupiter-call-ring-note" class="jupiter-call-ring-note" role="status" hidden></p>
+      <div class="jupiter-call-actions">
+        <button type="button" id="jupiter-call-decline" class="jupiter-call-btn jupiter-call-decline" aria-label="Decline the Jupiter call" title="Decline">
+          <i class="ph-fill ph-phone-x" aria-hidden="true"></i><span>Decline</span>
+        </button>
+        <button type="button" id="jupiter-call-answer" class="jupiter-call-btn jupiter-call-answer" aria-label="Answer the Jupiter call" title="Answer — opens Live Conversation">
+          <i class="ph-fill ph-phone" aria-hidden="true"></i><span>Answer</span>
+        </button>
+      </div>
+      <p class="jupiter-call-footnote">Not a phone call. Your camera and screen stay off until you turn them on.</p>
+    </div>
+  </section>
+
+  <div id="computer-control-banner" class="computer-control-banner" role="status" aria-live="polite" hidden>
+    <span class="computer-control-dot" aria-hidden="true"></span><span id="computer-control-banner-text">Jupiter is controlling a window</span>
+    <button id="computer-control-banner-stop" type="button" aria-label="Stop laptop control now">Stop</button>
+  </div>
+
+  <!-- Auth / OTP Modal -->
+  <div id="auth-modal" class="modal-overlay hidden">
+    <div class="modal-content glass-modal" style="position: relative; max-width: 450px; padding-top: 50px; width: 90%;">
+        <button id="btn-auth-back" class="icon-btn" style="position: absolute; top: 15px; left: 15px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; transition: 0.3s;" title="Go Back">
+          <i class="ph ph-arrow-left"></i>
+        </button>
+        <div class="modal-header">
+          <i class="ph-fill ph-planet brand-icon" style="font-size: 2.5rem;"></i>
+          <h2 style="margin-top: 10px;" id="auth-main-title">Login to Jupiter</h2>
+          <p id="auth-subtitle">Welcome back! Please verify your identity.</p>
+        </div>
+        
+        <div class="auth-tabs" style="display: flex; gap: 10px; margin-top: 20px; margin-bottom: 20px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 10px;">
+          <button id="tab-login" class="auth-tab active" style="flex: 1; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; cursor: pointer; transition: 0.3s; font-weight: bold; font-size: 1.05rem;">Login</button>
+          <button id="tab-register" class="auth-tab" style="flex: 1; padding: 10px; border-radius: 8px; background: transparent; border: 1px solid transparent; color: var(--text-secondary); cursor: pointer; transition: 0.3s; font-size: 1.05rem;">Register</button>
+        </div>
+        
+        <p id="auth-error-msg" style="background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: 8px; padding: 10px; color: #ff6b6b; font-size: 0.9rem; margin-bottom: 15px; text-align: center; display: none;"></p>
+      
+      <!-- Step 1: Email -->
+      <div id="auth-step-1" class="auth-step">
+        <div id="auth-request-username-row" class="input-group hidden">
+          <i class="ph ph-user"></i>
+          <input type="text" id="auth-request-username" placeholder="Choose a Username">
+        </div>
+        <div class="input-group">
+          <i class="ph ph-envelope"></i>
+          <input type="email" id="auth-email" placeholder="Enter your Email ID">
+        </div>
+        <button type="button" class="primary-btn" id="btn-send-otp" style="width: 100%;">Get OTP</button>
+      </div>
+
+      <!-- Step 2: OTP -->
+      <div id="auth-step-2" class="auth-step hidden">
+        <p id="otp-instruction" style="font-size: 0.9rem; color: var(--text-secondary); text-align: center; margin-bottom: 16px; line-height: 1.4;"></p>
+        <div class="input-group">
+          <i class="ph ph-lock-key" style="font-size: 1.2rem; color: #a78bfa;"></i>
+          <input type="text" id="auth-otp" placeholder="Enter OTP" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="one-time-code" spellcheck="false">
+        </div>
+        <button class="primary-btn" id="btn-verify-otp" style="width: 100%;">Verify OTP</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 0.85rem; color: var(--text-secondary);">
+          <span id="otp-timer" style="font-weight: 500;"></span>
+          <button type="button" id="btn-resend-otp" style="background: none; border: none; color: #a78bfa; cursor: pointer; font-size: 0.85rem; text-decoration: underline; padding: 2px 6px;" disabled>Resend OTP</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Username -->
+      <div id="auth-step-3" class="auth-step hidden">
+        <div class="input-group">
+          <i class="ph ph-user"></i>
+          <input type="text" id="auth-username" placeholder="Choose a Username">
+        </div>
+        <button class="primary-btn" id="btn-complete-setup">Complete Setup</button>
+      </div>
+
+      <div id="auth-step-access-request" class="auth-step hidden">
+        <div class="access-request-state"><i class="ph ph-hourglass-medium"></i><h3>Access request submitted</h3><p id="access-request-message">An Owner will review your request. This page updates automatically.</p><strong id="access-request-countdown"></strong></div>
+      </div>
+
+      <div id="auth-step-registration-approved" class="auth-step hidden">
+        <div class="registration-approved-state">
+          <span class="registration-approved-icon"><i class="ph-fill ph-check-circle" aria-hidden="true"></i></span>
+          <h3>Registration Approved</h3>
+          <p>Your registration request has been approved.</p>
+          <p id="registration-approved-status" class="api-key-inline-status" role="status"></p>
+          <button type="button" id="btn-registration-get-otp" class="primary-btn registration-get-otp"><i class="ph ph-lock-key" aria-hidden="true"></i><span>Get OTP</span></button>
+        </div>
+      </div>
+
+      <!-- Step 4: Mandatory Google AI access for normal accounts -->
+      <div id="auth-step-4" class="auth-step api-key-setup hidden">
+        <div class="api-key-setup-copy">
+          <h3>Set up Jupiter AI access</h3>
+          <p>Jupiter requires your own Google AI Studio Gemini API key.</p>
+          <ol>
+            <li>Open Google AI Studio and sign in.</li>
+            <li>Create a Gemini API key. Use a recognizable project name such as <strong>Jupiter User</strong> if prompted.</li>
+            <li>Copy the key, return here, and paste it below.</li>
+          </ol>
+          <a class="google-ai-studio-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"><i class="ph ph-arrow-square-out" aria-hidden="true"></i> Get a Google AI Studio API key</a>
+        </div>
+        <div class="input-group">
+          <i class="ph ph-key"></i>
+          <input type="password" id="auth-google-api-key" placeholder="Paste your Gemini API key" autocomplete="new-password" spellcheck="false">
+          <button type="button" id="toggle-auth-api-key" class="secret-visibility-btn" aria-label="Show API key"><i class="ph ph-eye"></i></button>
+        </div>
+        <p id="api-key-setup-status" class="api-key-inline-status" role="status"></p>
+        <button class="secondary-btn hidden" id="btn-retry-saved-api-key">Retry Saved Key</button>
+        <button class="primary-btn" id="btn-save-google-api-key">Validate and Continue</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <dialog id="profile-photo-crop-dialog" class="profile-photo-crop-dialog" aria-labelledby="profile-photo-crop-title" aria-describedby="profile-photo-crop-help">
+    <header class="profile-photo-crop-header">
+      <div><h2 id="profile-photo-crop-title">Crop Profile Photo</h2><p id="profile-photo-crop-help">Position your photo inside the square. Your avatar will appear circular.</p></div>
+      <button type="button" class="icon-btn" data-photo-close aria-label="Cancel photo crop"><i class="ph ph-x" aria-hidden="true"></i></button>
+    </header>
+    <div class="profile-photo-crop-body">
+      <canvas data-photo-viewport class="profile-photo-crop-viewport" tabindex="0" aria-label="Square crop. Drag to pan, or use the arrow keys." width="400" height="400"></canvas>
+      <div class="profile-photo-crop-preview-group"><canvas data-photo-preview width="240" height="240" aria-label="Circular avatar preview"></canvas><span>Circular preview</span></div>
+    </div>
+    <div class="profile-photo-crop-controls">
+      <label for="profile-photo-zoom">Zoom</label><input id="profile-photo-zoom" data-photo-zoom type="range" min="1" max="4" step="0.01" value="1">
+      <button type="button" class="secondary-btn" data-photo-reset>Reset</button>
+    </div>
+    <p data-photo-quality class="profile-photo-crop-quality"></p>
+    <p data-photo-status class="profile-photo-crop-status" role="status" aria-live="polite"></p>
+    <footer class="profile-photo-crop-footer"><button type="button" class="secondary-btn" data-photo-cancel>Cancel</button><button type="button" class="primary-btn" data-photo-save>Save photo</button></footer>
+  </dialog>
+
+  <!-- Profile Settings Modal -->
+  <div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal-content glass-modal profile-modal-content">
+      <div class="modal-top">
+        <button id="close-profile" class="icon-btn close-modal" aria-label="Close profile"><i class="ph ph-x" aria-hidden="true"></i></button>
+        <div class="profile-avatar large"><img id="modal-profile-photo" class="profile-photo-image hidden" alt=""><i class="ph-fill ph-user"></i></div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; margin-bottom: 15px;">
+            <h2 id="modal-username" style="margin: 0;">User</h2>
+            <span id="modal-owner-badge" class="owner-badge filled hidden">OWNER</span>
+          </div>
+        <p id="modal-email" class="text-muted" style="margin: 0 0 15px;">maintainer@example.invalid</p>
+      </div>
+
+      <div id="mobile-settings-home" class="mobile-settings-home" aria-label="Settings home">
+
+        <section class="mobile-settings-group" data-mobile-settings-group="power" data-mobile-settings-role-group>
+          <h4>POWER</h4>
+          <div class="mobile-settings-rows">
+            <button type="button" class="mobile-settings-row mobile-settings-role-row" data-mobile-settings-target="tab-owner-power" data-mobile-role-row="owner"><span class="mobile-settings-row-main"><i class="ph ph-crown" aria-hidden="true"></i><span><strong>Owner Power</strong><small>Authorised owner tools</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row mobile-settings-role-row" data-mobile-settings-target="tab-admin-power" data-mobile-role-row="admin"><span class="mobile-settings-row-main"><i class="ph ph-shield" aria-hidden="true"></i><span><strong>Admin Power</strong><small>Authorised administration tools</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+          </div>
+        </section>
+
+        <section class="mobile-settings-group" data-mobile-settings-group="account">
+          <h4>ACCOUNT</h4>
+          <div class="mobile-settings-rows">
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-profile">
+              <span class="mobile-settings-row-main"><i class="ph ph-user" aria-hidden="true"></i><span><strong>Profile</strong><small>Personal details and photo</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-account">
+              <span class="mobile-settings-row-main"><i class="ph ph-identification-card" aria-hidden="true"></i><span><strong>Account</strong><small data-mobile-setting-subtitle="account">Access and session controls</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-downloads">
+              <span class="mobile-settings-row-main"><i class="ph ph-download-simple" aria-hidden="true"></i><span><strong>Downloads</strong><small>Location and save behavior</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </section>
+
+        <section class="mobile-settings-group" data-mobile-settings-group="personalization">
+          <h4>PERSONALIZATION</h4>
+          <div class="mobile-settings-rows">
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-general"><span class="mobile-settings-row-main"><i class="ph ph-sliders-horizontal" aria-hidden="true"></i><span><strong>General</strong><small>Appearance and display</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-personality"><span class="mobile-settings-row-main"><i class="ph ph-sparkle" aria-hidden="true"></i><span><strong>Personality</strong><small>How Jupiter responds</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-proactive"><span class="mobile-settings-row-main"><i class="ph ph-bell-ringing" aria-hidden="true"></i><span><strong>Proactive Assistance</strong><small>Helpful suggestions and reminders</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-call-log"><span class="mobile-settings-row-main"><i class="ph ph-phone-list" aria-hidden="true"></i><span><strong>Call Log</strong><small>Incoming, answered and missed calls</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+          </div>
+        </section>
+
+        <section class="mobile-settings-group" data-mobile-settings-group="memory">
+          <h4>MEMORY &amp; DATA</h4>
+          <div class="mobile-settings-rows">
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-memory"><span class="mobile-settings-row-main"><i class="ph ph-brain" aria-hidden="true"></i><span><strong>Memory</strong><small>Review Jupiter's saved context</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-review"><span class="mobile-settings-row-main"><i class="ph ph-check-square-offset" aria-hidden="true"></i><span><strong>Memory Review</strong><small>Approve or remove suggestions</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-bin"><span class="mobile-settings-row-main"><i class="ph ph-trash" aria-hidden="true"></i><span><strong>Bin</strong><small>Recently removed chat items</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-uploaded-files"><span class="mobile-settings-row-main"><i class="ph ph-folder-open" aria-hidden="true"></i><span><strong>Uploaded Files</strong><small>Files saved to this account</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-created-files"><span class="mobile-settings-row-main"><i class="ph ph-files" aria-hidden="true"></i><span><strong>Created Files</strong><small>Images, audio and saved generated files</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-privacy"><span class="mobile-settings-row-main"><i class="ph ph-shield-check" aria-hidden="true"></i><span><strong>Privacy &amp; Data</strong><small>Sharing and account isolation</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-contact-requests"><span class="mobile-settings-row-main"><i class="ph ph-address-book" aria-hidden="true"></i><span><strong>Contact Requests</strong><small>Approve who may see your email or number</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+          </div>
+        </section>
+
+        <section class="mobile-settings-group" data-mobile-settings-group="capabilities">
+          <h4>CAPABILITIES</h4>
+          <div class="mobile-settings-rows">
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-capabilities"><span class="mobile-settings-row-main"><i class="ph ph-lightning" aria-hidden="true"></i><span><strong>Capabilities</strong><small>Available Jupiter features</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-plugins"><span class="mobile-settings-row-main"><i class="ph ph-plugs-connected" aria-hidden="true"></i><span><strong>Plugins</strong><small>Connected services</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-voice"><span class="mobile-settings-row-main"><i class="ph ph-waveform" aria-hidden="true"></i><span><strong>Voice</strong><small>Voice and speech preferences</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+          </div>
+        </section>
+
+        <section class="mobile-settings-group" data-mobile-settings-group="reports">
+          <h4>REPORTS</h4>
+          <div class="mobile-settings-rows">
+            <button type="button" class="mobile-settings-row" data-mobile-settings-target="tab-reports"><span class="mobile-settings-row-main"><i class="ph ph-flag" aria-hidden="true"></i><span><strong>My Reports</strong><small>Report history and status</small></span></span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+          </div>
+        </section>
+
+      </div>
+
+      <div class="settings-layout">
+      <nav class="profile-tabs" role="tablist" aria-label="Settings categories">
+        <button type="button" class="profile-tab" role="tab" data-target="tab-general"><i class="ph ph-sliders-horizontal"></i> General</button>
+        <button type="button" class="profile-tab role-settings-tab owner-power-tab hidden" role="tab" data-target="tab-owner-power"><i class="ph ph-crown"></i> Owner Power</button>
+        <button type="button" class="profile-tab role-settings-tab admin-power-tab hidden" role="tab" data-target="tab-admin-power"><i class="ph ph-shield"></i> Admin Power</button>
+        <button type="button" class="profile-tab active" role="tab" data-target="tab-profile"><i class="ph ph-user"></i> Profile</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-personality"><i class="ph ph-sparkle"></i> Personality</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-proactive"><i class="ph ph-bell-ringing"></i><span>Proactive Assistance</span></button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-memory"><i class="ph ph-brain"></i> Memory</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-bin"><i class="ph ph-trash"></i> Bin</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-review"><i class="ph ph-check-square-offset"></i> Memory Review</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-capabilities"><i class="ph ph-lightning"></i> Capabilities</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-plugins"><i class="ph ph-plugs-connected"></i> Plugins</button>
+        <button type="button" class="profile-tab my-reports-tab" role="tab" data-target="tab-reports"><i class="ph ph-flag"></i> My Reports</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-uploaded-files"><i class="ph ph-folder-open"></i> Uploaded Files</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-voice"><i class="ph ph-waveform"></i> Voice</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-privacy"><i class="ph ph-shield-check"></i> Privacy &amp; Data</button>
+        <button type="button" class="profile-tab" id="contact-requests-tab" role="tab" data-target="tab-contact-requests"><i class="ph ph-address-book"></i> Contact Requests <span id="contact-requests-badge" class="call-missed-badge" aria-hidden="true" hidden>0</span></button>
+        <button type="button" class="profile-tab" id="call-log-tab" role="tab" data-target="tab-call-log"><i class="ph ph-phone-list"></i> Call Log <span id="call-missed-badge" class="call-missed-badge" aria-hidden="true" hidden>0</span></button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-created-files"><i class="ph ph-files"></i> Created Files</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-downloads"><i class="ph ph-download-simple"></i> Downloads</button>
+        <button type="button" class="profile-tab" role="tab" data-target="tab-account"><i class="ph ph-identification-card"></i> Account</button>
+      </nav>
+
+      <div class="tab-content-container">
+        <div id="mobile-settings-detail-header" class="mobile-settings-detail-header" aria-label="Settings detail navigation">
+          <button id="mobile-settings-back" type="button" class="secondary-btn"><i class="ph ph-arrow-left" aria-hidden="true"></i><span>Back</span></button>
+          <strong id="mobile-settings-detail-title">Settings</strong>
+        </div>
+        <!-- Tab: About -->
+        <div class="tab-pane" id="tab-general">
+          <h3>General</h3>
+          <p class="tab-desc">Choose a curated appearance that stays readable across Jupiter.</p>
+          <div class="appearance-settings" aria-label="Appearance settings">
+            <label>Appearance<select id="appearance-mode"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
+            <label>Contrast<select id="appearance-contrast"><option value="standard">Standard</option><option value="high">High</option></select></label>
+            <fieldset><legend>Accent colour</legend><div id="appearance-accent-presets" class="appearance-presets"><button type="button" data-accent="blue" aria-label="Blue accent"></button><button type="button" data-accent="violet" aria-label="Violet accent"></button><button type="button" data-accent="emerald" aria-label="Emerald accent"></button><button type="button" data-accent="rose" aria-label="Rose accent"></button></div></fieldset>
+            <label>User bubble style<select id="appearance-user-bubble"><option value="blue">Jupiter Blue</option><option value="ocean">Ocean Blue</option></select></label>
+            <label>User bubble glow<select id="appearance-user-glow"><option value="off">Off</option><option value="low">Low</option><option value="medium">Medium</option></select></label>
+            <label class="appearance-checkbox"><input id="appearance-user-shine" type="checkbox"> User bubble shine</label>
+            <label>Assistant bubble style<select id="appearance-assistant-bubble"><option value="green">Light Green</option><option value="neutral">Dark Neutral</option></select></label>
+            <label class="appearance-checkbox"><input id="appearance-output-glow" type="checkbox" checked> Shining output glow</label>
+            <button type="button" id="reset-appearance" class="secondary-btn">Reset appearance defaults</button>
+          </div>
+          <h3 class="settings-subheading">About Jupiter</h3>
+          <div class="about-jupiter-copy">
+            <p>Jupiter is a personal AI created by the project creator, designed to be more than just an assistant.</p>
+            <p>Built around trust, personalization, and meaningful interaction, Jupiter is designed to understand you better over time — your preferences, routines, conversations, and the things that matter to you.</p>
+            <p>The idea behind Jupiter is simple: to create a truly personal AI that feels familiar, reliable, private, and available whenever you need her.</p>
+            <p>From everyday conversations and questions to productivity, creativity, learning, and assistance, Jupiter is designed to adapt to the person using her rather than treating everyone the same.</p>
+
+            <div class="about-creator">
+              <span class="about-created-label">Created by</span>
+              <h4>the project creator</h4>
+              <p>Jupiter began as the maintainer vision of building his own intelligent system — an AI centered around trust, personality, memory, and a more personal connection between people and technology.</p>
+            </div>
+
+            <p class="about-tagline">Jupiter — Your AI. Your Space. Your Companion.</p>
+
+            <dl class="about-version" id="about-version" aria-label="Jupiter version">
+              <div><dt>App</dt><dd id="about-app-version">Checking…</dd></div>
+              <div><dt>Interface</dt><dd id="about-interface-version">Checking…</dd></div>
+            </dl>
+          </div>
+          
+          <div style="margin-top: 15px; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 15px; border-radius: 12px; border: 1px solid rgba(79, 172, 254, 0.3); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h4 style="font-size: 0.95rem; margin-bottom: 3px; color: white;">Software Update</h4>
+              <p style="font-size: 0.8rem; color: rgba(255,255,255,0.8);" id="update-status-text" role="status" aria-live="polite">Checking for updates…</p>
+              <button type="button" id="check-software-update" class="secondary-btn release-update-action">Check for updates</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane role-settings-pane hidden" id="tab-owner-power">
+          <h3><i class="ph ph-crown" aria-hidden="true"></i> Owner Power</h3>
+          <p class="tab-desc">Owner-only tools and account management.</p>
+          <div class="settings-power-actions" data-power-action-list="owner" aria-label="Owner Power actions"></div>
+          <p class="model-refresh-status" data-model-refresh-status role="status" aria-live="polite"></p>
+          <section id="owner-user-management" class="owner-user-management hidden" aria-labelledby="owner-user-management-title">
+            <div class="owner-user-management-heading"><div><h4 id="owner-user-management-title"><i class="ph ph-users-three" aria-hidden="true"></i> Manage Users</h4><p>Change a registered user's Jupiter role.</p></div></div>
+            <div class="owner-management-tabs" role="tablist" aria-label="Owner management">
+              <button type="button" class="owner-management-tab active" role="tab" aria-selected="true" aria-controls="owner-roles-panel" data-owner-management-tab="roles"><i class="ph ph-users-three" aria-hidden="true"></i> Manage Roles</button>
+              <button type="button" class="owner-management-tab" role="tab" aria-selected="false" aria-controls="owner-approval-history-panel" data-owner-management-tab="history"><i class="ph ph-clock-counter-clockwise" aria-hidden="true"></i> Approval History</button>
+            </div>
+            <div id="owner-roles-panel" class="owner-management-panel" role="tabpanel">
+              <p id="owner-user-management-status" class="api-key-inline-status" role="status"></p>
+              <div id="owner-user-management-list" class="owner-user-management-list"></div>
+            </div>
+            <div id="owner-approval-history-panel" class="owner-management-panel hidden" role="tabpanel">
+              <div class="approval-history-filters" role="tablist" aria-label="Approval history filter">
+                <button type="button" class="approval-history-filter active" data-approval-filter="all" aria-selected="true">All</button>
+                <button type="button" class="approval-history-filter" data-approval-filter="approved" aria-selected="false">Approved</button>
+                <button type="button" class="approval-history-filter" data-approval-filter="rejected" aria-selected="false">Rejected</button>
+              </div>
+              <p id="owner-approval-history-status" class="api-key-inline-status" role="status"></p>
+              <div id="owner-approval-history-list" class="approval-history-list"></div>
+              <button id="owner-approval-history-more" type="button" class="secondary-btn hidden">Show More</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="tab-pane role-settings-pane hidden" id="tab-admin-power">
+          <h3><i class="ph ph-shield" aria-hidden="true"></i> Admin Power</h3>
+          <p class="tab-desc">Authorised administration tools.</p>
+          <div class="settings-power-actions" data-power-action-list="admin" aria-label="Admin Power actions"></div>
+          <p class="settings-power-empty">Admin-specific tools will appear here when available.</p>
+        </div>
+
+        <!-- Tab: Profile -->
+        <div class="tab-pane active" id="tab-profile">
+          <h3>Your Profile</h3>
+          <p class="tab-desc">Manage your account details and credentials.</p>
+          
+          <div class="profile-photo-setting">
+            <div class="profile-photo-preview"><img id="profile-photo-preview" class="profile-photo-image hidden" alt="Your profile photo"><i class="ph-fill ph-user"></i></div>
+            <div><label class="profile-field-label">Profile Photo</label><p>JPEG, PNG, or WebP up to 5 MB.</p></div>
+            <button type="button" id="btn-upload-profile-photo" class="secondary-btn">Upload Photo</button>
+            <input id="profile-photo-input" type="file" hidden accept="image/jpeg,image/png,image/webp">
+          </div>
+
+          <div style="margin-bottom: 15px;">
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Username</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="profile-username-input" class="auth-input" style="flex:1;min-width:0;" maxlength="120" aria-describedby="profile-username-status" placeholder="Enter new username">
+              <button type="button" id="btn-save-username" class="primary-btn" style="padding: 0 15px;flex:none;">Save</button>
+            </div>
+            <p id="profile-username-status" class="api-key-inline-status" role="status" aria-live="polite"></p>
+          </div>
+
+          <div style="border-top: 1px solid var(--surface-border); padding-top: 15px;">
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Email Address</label>
+            
+            <!-- Step 1: Request change -->
+            <div id="email-step-1" style="display: flex; gap: 10px;">
+              <input type="text" id="profile-email-input" class="auth-input" style="flex:1;" readonly>
+              <button id="btn-change-email" class="primary-btn" style="padding: 0 15px; cursor: pointer;">Change</button>
+            </div>
+
+            <!-- Step 2: Old Email OTP -->
+            <div id="email-step-2" class="hidden" style="margin-top: 10px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+              <p style="font-size: 0.8rem; margin-bottom: 8px; color: var(--primary-color);" id="otp-old-msg"></p>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" id="otp-old-input" class="auth-input" style="flex:1;" placeholder="Enter OTP" maxlength="4">
+                <button id="btn-verify-old-otp" class="primary-btn" style="padding: 0 15px;">Verify</button>
+              </div>
+            </div>
+
+            <!-- Step 3: New Email Input -->
+            <div id="email-step-3" class="hidden" style="margin-top: 10px;">
+              <div style="display: flex; gap: 10px;">
+                <input type="email" id="new-email-input" class="auth-input" style="flex:1;" placeholder="Enter new email ID">
+                <button id="btn-send-new-otp" class="primary-btn" style="padding: 0 15px;">Send OTP</button>
+              </div>
+            </div>
+            
+            <!-- Step 4: New Email OTP -->
+            <div id="email-step-4" class="hidden" style="margin-top: 10px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+              <p style="font-size: 0.8rem; margin-bottom: 8px; color: var(--primary-color);" id="otp-new-msg"></p>
+              <div style="display: flex; gap: 10px;">
+                <input type="text" id="otp-new-input" class="auth-input" style="flex:1;" placeholder="Enter OTP" maxlength="4">
+                <button id="btn-verify-new-otp" class="primary-btn" style="padding: 0 15px;">Confirm</button>
+              </div>
+            </div>
+            
+          </div>
+
+</div>
+
+        <!-- Tab: Personality -->
+        <div class="tab-pane" id="tab-personality">
+          <h3>How Jupiter Responds</h3>
+          <p class="tab-desc">Choose how Jupiter speaks and explains. These settings are separate from factual Memory.</p>
+          <div id="personality-preference-list" class="personality-preference-list" aria-live="polite">
+            <label class="personality-preference-row personality-base-style"><span><strong>Base style and tone</strong><small>Choose the overall style Jupiter should use when responding.</small></span><select data-personality-key="base_style" aria-label="Base style and tone"><option value="Default">Default — Jupiter's natural adaptive style.</option><option value="Professional">Professional — Polished and precise.</option><option value="Friendly">Friendly — Warm and chatty.</option><option value="Candid">Candid — Direct and encouraging.</option><option value="Quirky">Quirky — Playful and imaginative.</option><option value="Efficient">Efficient — Concise and plain.</option><option value="Cynical">Cynical — Critical and sarcastic.</option></select></label>
+            <div class="personality-section-label"><strong>Characteristics</strong><small>Choose additional customization on top of your base style and tone.</small></div>
+            <label class="personality-preference-row"><span>Warm</span><select data-personality-key="warm"><option value="More">More — Friendlier and more personable.</option><option value="Default">Default</option><option value="Less">Less — More professional and factual.</option></select></label>
+            <label class="personality-preference-row"><span>Enthusiastic</span><select data-personality-key="enthusiastic"><option value="More">More — More energy and excitement.</option><option value="Default">Default</option><option value="Less">Less — Calmer and more neutral.</option></select></label>
+            <label class="personality-preference-row"><span>Headers &amp; Lists</span><select data-personality-key="headers_lists"><option value="More">More — Use clear formatting, headings and lists more often.</option><option value="Default">Default — Use structure when it helps.</option><option value="Less">Less — Prefer paragraphs over lists.</option></select></label>
+            <label class="personality-preference-row"><span>Emoji</span><select data-personality-key="emoji"><option value="More">More — Use more emojis naturally.</option><option value="Default">Default</option><option value="Less">Less — Don't use many emojis.</option></select></label>
+            <label class="personality-preference-row"><span>Humor</span><select data-personality-key="humor"><option value="Less">Less — Mostly serious; occasional humour only.</option><option value="Default">Default — Natural humour when appropriate.</option><option value="More">More — More witty and humorous naturally.</option></select></label>
+            <label class="personality-preference-row"><span>Sarcasm</span><select data-personality-key="sarcasm"><option value="Off">Off — Avoid sarcastic remarks.</option><option value="Light">Light — Occasional subtle sarcasm.</option><option value="Adaptive">Adaptive — Context-aware light/playful sarcasm.</option><option value="More">More — More frequent playful sarcastic remarks.</option></select></label>
+            <label class="personality-preference-row"><span>Conversational Style</span><select data-personality-key="conversational_style"><option value="Professional">Professional — Polished/formal conversation.</option><option value="Natural">Natural — Relaxed, personal, human-like conversation.</option><option value="Casual">Casual — More informal conversational language.</option></select></label>
+            <div class="personality-section-label">Response detail</div>
+            <label class="personality-preference-row"><span>Response length</span><select data-personality-key="response_length"><option>Concise</option><option>Balanced</option><option>Detailed</option></select></label>
+            <label class="personality-preference-row"><span>Explanation</span><select data-personality-key="explanation_depth"><option>Direct</option><option>Step-by-step</option><option>Deep explanation</option></select></label>
+            <label class="personality-preference-row"><span>Examples</span><select data-personality-key="examples"><option>Rarely</option><option>When helpful</option><option>Frequently</option></select></label>
+            <label class="personality-preference-row"><span>Technical depth</span><select data-personality-key="technical_depth"><option>Simple</option><option>Adaptive</option><option>Advanced</option></select></label>
+            <label class="personality-preference-row personality-preference-wide"><span><strong>Custom Instructions</strong><small>Only behavior not captured by the structured fields above.</small></span><textarea id="custom-instructions" data-personality-key="custom_instruction" placeholder="Add a response preference…"></textarea></label>
+          </div>
+          <div class="personality-default-action">
+            <button type="button" id="reset-personality-defaults" class="secondary-btn"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i><span>Set to default</span></button>
+            <small>Resets structured personality controls only. Custom Instructions and Auto-Updates stay unchanged.</small>
+          </div>
+          
+          <div class="toggle-setting">
+            <div class="toggle-info">
+              <h4>Allow Auto-Updates</h4>
+              <p>Can Jupiter add, delete or edit its custom instructions dynamically based on your chat requests?</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto-update-toggle">
+              <span class="slider round"></span>
+            </label>
+          </div>
+          <section class="buddy-settings" id="buddy-settings" aria-labelledby="buddy-heading">
+            <div class="buddy-head"><i class="ph ph-paw-print" aria-hidden="true"></i><span><strong id="buddy-heading">Buddy</strong>
+              <small>Your Jupiter Buddy keeps you company during Live conversations: it listens, thinks and reacts with Jupiter, and sleeps when you ask Jupiter to stay quiet. Choose which buddy you want.</small></span></div>
+            <div class="buddy-options" role="radiogroup" aria-label="Choose your buddy">
+              <button type="button" class="buddy-option" role="radio" aria-checked="true" data-buddy="jupiter">
+                <span class="buddy-preview" aria-hidden="true"><i></i><i></i></span>
+                <span class="buddy-text"><strong>Pixie</strong><small>Jupiter Buddy · expressive eyes in a small notch at the top of your screen (Windows app). Expand it to see the live transcript.</small></span>
+                <i class="ph ph-check-circle buddy-selected" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="buddy-option" role="radio" aria-checked="false" data-buddy="astro">
+                <span class="buddy-preview buddy-preview-astro" aria-hidden="true"><img src="buddy/juno.png" alt="" width="154" height="192" decoding="async"></span>
+                <span class="buddy-text"><strong>Juno</strong><small>Jupiter Buddy · a 3D robot that acts out what Jupiter is doing: listening, thinking, speaking, searching, coding, reading, music and more. Tap it for the live transcript, drag it anywhere, double-tap to bring it back to the centre.</small></span>
+                <i class="ph ph-check-circle buddy-selected" aria-hidden="true"></i>
+              </button>
+              <div class="buddy-option buddy-more" aria-hidden="true"><i class="ph ph-sparkle"></i><span>More buddies are coming soon</span></div>
+            </div>
+            <label class="toggle-setting buddy-toggle"><span class="toggle-info"><h4>Show my buddy in Live conversations</h4><p id="buddy-platform-note">Turn off to keep the top of your screen clear.</p></span><span class="switch"><input type="checkbox" id="buddy-enabled" checked><span class="slider round"></span></span></label>
+          </section>
+        </div>
+
+        <div class="tab-pane" id="tab-proactive">
+          <h3>Proactive Assistance</h3>
+          <p class="tab-desc">Control when Jupiter may remind you, follow up, or deliver a message from another registered Jupiter user.</p>
+          <section class="reminder-settings" aria-labelledby="reminder-list-heading">
+            <div class="memory-heading-row"><h4 id="reminder-list-heading">Your reminders</h4><span>Private to you</span></div>
+            <p class="tab-desc">Ask in chat — “remind me tomorrow at 8 to submit my assignment”. Reminders you ask for arrive on time, even during quiet hours.</p>
+            <div id="reminder-delivery-status" class="reminder-delivery-status" hidden></div>
+            <div id="reminder-list" class="reminder-list" aria-live="polite"><p class="memory-review-empty">No reminders loaded.</p></div>
+          </section>
+          <section class="call-settings" id="desktop-background-settings" aria-labelledby="desktop-background-heading" hidden>
+            <div class="memory-heading-row"><h4 id="desktop-background-heading">Notifications and background</h4><span>Windows</span></div>
+            <p class="tab-desc">Like WhatsApp and ChatGPT: Jupiter tells you when a reply is ready, when it has a question or finishes a task while you are in another app, and rings for Jupiter calls even when its window is closed.</p>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Windows notifications</h4><p>Replies, questions, finished tasks and reminders while Jupiter is not in front.</p></span><span class="switch"><input type="checkbox" id="desktop-notify-enabled" checked><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Keep running when closed</h4><p>Closing the window keeps Jupiter in the notification area so calls and notifications still arrive. Quit from its icon there.</p></span><span class="switch"><input type="checkbox" id="desktop-keep-running" checked><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Start Jupiter when I sign in</h4><p id="desktop-start-note">Opens quietly in the notification area, ready for calls.</p></span><span class="switch"><input type="checkbox" id="desktop-start-sign-in" checked><span class="slider round"></span></span></label>
+            <p id="desktop-background-status" class="tab-desc" role="status"></p>
+          </section>
+          <section class="call-settings" id="call-settings" aria-labelledby="call-settings-heading">
+            <div class="memory-heading-row"><h4 id="call-settings-heading">Jupiter calls</h4><span>In the app · free</span></div>
+            <p class="tab-desc">Say “call me when this is finished” (or add “call me” to a reminder) and Jupiter rings your signed-in Jupiter apps when it really happens. Answering opens Live Conversation. This is not a phone call and never uses your SIM or phone number.</p>
+            <div id="call-delivery-status" class="reminder-delivery-status call-delivery-status" role="status" hidden></div>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Allow incoming Jupiter calls</h4><p>When off, Jupiter never rings; you'll see a missed-call note instead.</p></span><span class="switch"><input type="checkbox" id="call-enabled" checked><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Quiet hours for calls</h4><p>No ringing between these times in your time zone. A missed-call note is kept.</p></span><span class="switch"><input type="checkbox" id="call-quiet-enabled"><span class="slider round"></span></span></label>
+            <div class="proactive-quiet-hours"><label>Quiet from<input type="time" id="call-quiet-start" value="22:00"></label><label>Quiet until<input type="time" id="call-quiet-end" value="07:00"></label></div>
+            <label class="call-setting-row" for="call-ring-seconds"><span>Ring for</span>
+              <select id="call-ring-seconds"><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select>
+            </label>
+            <div class="call-ringtone" aria-labelledby="call-ringtone-heading">
+              <h4 id="call-ringtone-heading">Ringtone</h4>
+              <p class="tab-desc"><span id="call-ringtone-current">Phone ringtone</span></p>
+              <p id="call-ringer-note" class="tab-desc call-ringer-note" role="status"></p>
+              <div id="call-ringtone-actions" class="call-ringtone-actions"></div>
+              <input type="file" id="call-ringtone-file" accept="audio/*" hidden>
+            </div>
+            <div class="call-actions-row"><button type="button" id="call-test-btn" class="secondary-btn" title="Jupiter rings this account once so you can check the ringtone"><i class="ph ph-phone-incoming" aria-hidden="true"></i> Test call</button></div>
+            <div id="call-missed-list" class="call-missed-list" aria-live="polite"></div>
+            <p id="call-save-status" class="tab-desc" role="status"></p>
+          </section>
+          <section class="call-settings" id="phone-agent-settings" aria-labelledby="phone-agent-heading" hidden>
+            <div class="memory-heading-row"><h4 id="phone-agent-heading">Phone agent mascot</h4><span>Android</span></div>
+            <p class="tab-desc">When Jupiter on your laptop does a task on this phone, a small Jupiter mascot can float where it taps, so you always see what it is doing. It needs “Display over other apps”. Nothing else changes.</p>
+            <p id="phone-agent-status" class="tab-desc" role="status"></p>
+            <div class="call-actions-row"><button type="button" id="phone-agent-allow" class="secondary-btn"><i class="ph ph-sparkle" aria-hidden="true"></i> Allow the mascot</button></div>
+          </section>
+          <div id="proactive-settings" class="proactive-settings" aria-live="polite">
+            <p class="tab-desc proactive-toggles-note">These settings control only what Jupiter brings up on its own.</p>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Allow proactive assistance</h4><p>Jupiter may surface one relevant item at a natural boundary.</p></span><span class="switch"><input type="checkbox" data-proactive-key="enabled"><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Upcoming events</h4><p>Bring up deadlines, meetings, trips, appointments and birthdays you mention in conversation.</p></span><span class="switch"><input type="checkbox" data-proactive-key="reminders"><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Follow-ups and memory check-ins</h4><p>Allow useful follow-ups without repeatedly interrupting you.</p></span><span class="switch"><input type="checkbox" data-proactive-key="followups"><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Memory check-ins</h4><p>Let Jupiter ask when an important saved fact may need confirmation or updating.</p></span><span class="switch"><input type="checkbox" data-proactive-key="memory_followups"><span class="slider round"></span></span></label>
+            <label class="toggle-setting" id="proactive-weather-row"><span class="toggle-info"><h4>Weather warnings</h4><p id="proactive-weather-note">Available only when OpenWeather is configured and healthy.</p><a id="proactive-weather-help" class="proactive-weather-help" href="https://home.openweathermap.org/api_keys" target="_blank" rel="noopener noreferrer">OpenWeather API key help</a></span><span class="switch"><input type="checkbox" data-proactive-key="weather_warnings"><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Messages from Jupiter users</h4><p>Deliver attributed messages when you next open Jupiter or reach a natural boundary.</p></span><span class="switch"><input type="checkbox" data-proactive-key="directed_messages"><span class="slider round"></span></span></label>
+            <label class="toggle-setting"><span class="toggle-info"><h4>Allow non-urgent interruptions</h4><p>When off, normal and low-priority items wait until the conversation is idle.</p></span><span class="switch"><input type="checkbox" data-proactive-key="allow_nonurgent_interruptions"><span class="slider round"></span></span></label>
+            <div class="proactive-quiet-hours"><label>Quiet hours start <span>(optional)</span><input type="time" data-proactive-key="quiet_start"></label><label>Quiet hours end <span>(optional)</span><input type="time" data-proactive-key="quiet_end"></label></div>
+            <p class="proactive-quiet-hours-note">Leave both fields empty for no quiet-hours restriction.</p>
+            <p id="proactive-save-status" class="tab-desc" role="status"></p>
+            <section class="directed-message-history"><h4>Sent Jupiter Messages</h4><p class="tab-desc">Pending messages can be edited or cancelled before delivery.</p><div id="directed-message-list"><p class="memory-review-empty">No messages loaded.</p></div></section>
+          </div>
+        </div>
+
+        <!-- Tab: Memory -->
+        <div class="tab-pane" id="tab-memory">
+          <div class="memory-heading-row"><h3>What Jupiter Remembers</h3><button type="button" id="memory-tier-help" class="memory-tier-help" aria-label="Explain memory tiers" aria-expanded="false">?</button></div>
+          <div id="memory-tier-help-panel" class="memory-tier-help-panel hidden"><strong>P0</strong> Core Permanent · <strong>P1</strong> Relevant Permanent · <strong>P2</strong> Rare Permanent Archive · <strong>P3</strong> Three-Month Archive · <strong>P4</strong> Current Chat</div>
+          <p class="tab-desc">Search and edit active account memories. Expired memories are excluded by the server.</p>
+          <div class="memory-search-box"><i class="ph ph-magnifying-glass"></i><input id="memory-search-input" type="search" placeholder="Search memories…" autocomplete="off"></div>
+          <div class="memory-list" id="memory-list-content" aria-live="polite"><p class="memory-review-empty">Open Memory to load your saved cards.</p></div>
+        </div>
+
+        <div class="tab-pane" id="tab-bin">
+          <div class="memory-heading-row"><h3>Bin</h3><button type="button" id="empty-chat-bin" class="secondary-btn">Empty Bin</button></div>
+          <p class="tab-desc">Deleted conversations stay recoverable for three calendar months and never participate in Jupiter context.</p>
+          <div id="chat-bin-list" class="chat-bin-list" aria-live="polite"><p class="memory-review-empty">Open Bin to load deleted conversations.</p></div>
+        </div>
+
+        <!-- Tab: Review -->
+        <div class="tab-pane" id="tab-review">
+          <h3>Memory Review</h3>
+          <p class="tab-desc">Questions Jupiter could not safely resolve without your input.</p>
+          <div id="memory-review-list" class="memory-review-list" aria-live="polite">
+            <p class="memory-review-empty">No memory questions are waiting.</p>
+          </div>
+        </div>
+
+        <!-- Tab: Capabilities -->
+        <div class="tab-pane" id="tab-capabilities">
+          <h3>Jupiter Capabilities</h3>
+          <p class="tab-desc">A quick overview of what Jupiter can do.</p>
+          <div class="capability-cards">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-plugins">
+          <h3>Plugins</h3>
+          <header class="app-connect-summary">
+            <i class="ph ph-plugs-connected" aria-hidden="true"></i>
+            <span><strong>App Connect</strong><small id="settings-app-connect-status">1 app supported · 0 connected</small><small>Connect supported services to your Jupiter account.</small></span>
+          </header>
+          <div class="settings-status-card">
+            <div><i class="ph ph-envelope-simple"></i><span><strong>Gmail</strong><small id="settings-gmail-status">Checking connection…</small></span></div>
+            <button type="button" id="settings-gmail-action" class="secondary-btn">Connect Gmail</button>
+          </div>
+          <section id="task-notify-card" class="computer-control-card task-notify-card" aria-labelledby="task-notify-title">
+            <header><i class="ph ph-bell-simple-ringing" aria-hidden="true"></i><span><strong id="task-notify-title">Task notifications</strong><small>Jupiter tells you when long work (Claude Code, Codex, a build) finishes, fails or needs you. Jupiter does not start that work: a task waits until its worker connects and reports. Completion counts only when the check you register for that task passes; the worker never messages you itself. Available now: Jupiter chat, Windows notifications while Jupiter runs, and the Android app while it runs. WhatsApp, SMS, calls and email are off until an official free channel is set up.</small></span></header>
+            <div class="computer-control-setup">
+              <label for="task-notify-name">Task</label>
+              <input id="task-notify-name" type="text" maxlength="200" placeholder="e.g. Finish the Jupiter release build">
+              <label for="task-notify-pref">How should I tell you?</label>
+              <input id="task-notify-pref" type="text" maxlength="400" placeholder="e.g. Tell me when it's done. Only WhatsApp; don't call.">
+              <label for="task-notify-check">Check that proves it's done</label>
+              <input id="task-notify-check" type="text" maxlength="200" placeholder="e.g. python -m pytest -q tests/test_release.py">
+              <label class="computer-control-check"><input id="task-notify-sensitive" type="checkbox"> Sensitive (notifications only say “open Jupiter”)</label>
+              <button id="task-notify-create" type="button" class="primary-btn">Track this task</button>
+              <div id="task-notify-result" class="task-notify-result" role="status" aria-live="polite" hidden></div>
+            </div>
+            <ul id="task-notify-list" class="task-notify-list" aria-label="Tracked tasks"></ul>
+          </section>
+          <section id="computer-control-card" class="computer-control-card" aria-labelledby="computer-control-title" hidden>
+            <header><i class="ph ph-cursor-click" aria-hidden="true"></i><span><strong id="computer-control-title">Laptop control</strong><small>Windows app only. Your request starts quietly in the background, one checked step at a time. Blue screen edges and a compact Jupiter orb show the active session; × stops it instantly. Jupiter does not take your mouse or keyboard. If an app cannot work safely in the background, Jupiter pauses until you choose foreground use. It never types passwords or codes and still asks before sending, deleting, buying or granting anything. You can also ask in chat or Live, e.g. “in Notepad, type a shopping list”.</small></span></header>
+            <div class="computer-control-setup">
+              <label for="computer-control-window">Window</label>
+              <div class="computer-control-row"><select id="computer-control-window"></select><button id="computer-control-refresh" type="button" class="secondary-btn">Refresh</button></div>
+              <label for="computer-control-goal">Goal</label>
+              <input id="computer-control-goal" type="text" maxlength="300" placeholder="e.g. In Notepad, write a shopping list with milk and eggs">
+              <div class="computer-control-row">
+                <label for="computer-control-minutes">Time limit</label>
+                <select id="computer-control-minutes"><option value="5">5 min</option><option value="10" selected>10 min</option><option value="20">20 min</option></select>
+                <label class="computer-control-check"><input id="computer-control-screens" type="checkbox" disabled> Screenshots: off in this version (Jupiter reads control names only; private windows are never read)</label>
+              </div>
+              <button id="computer-control-start" type="button" class="primary-btn">Start in background</button>
+            </div>
+            <div id="computer-control-live" class="computer-control-live" role="status" aria-live="polite" hidden>
+              <p><strong id="computer-control-state">Idle</strong> <span id="computer-control-step"></span></p>
+              <p>Target: <span id="computer-control-target"></span></p>
+              <p>Next action: <span id="computer-control-intent"></span></p>
+              <ol id="computer-control-history"></ol>
+              <div class="computer-control-row">
+                <button id="computer-control-pause" type="button" class="secondary-btn">Pause</button>
+                <button id="computer-control-resume" type="button" class="secondary-btn">Resume</button>
+                <button id="computer-control-foreground" type="button" class="secondary-btn" hidden>Use in foreground</button>
+                <button id="computer-control-cancel" type="button" class="secondary-btn">Cancel</button>
+                <button id="computer-control-stop" type="button" class="danger-btn">Stop now</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="tab-pane" id="tab-reports">
+          <div class="reports-heading-row"><div><h3>My Reports</h3><p class="tab-desc">Track issues you reported and any public resolution from Jupiter's team.</p></div><button id="create-general-report" type="button" class="primary-btn"><i class="ph ph-plus" aria-hidden="true"></i> Create a New Report</button></div>
+          <div id="my-reports-list" class="reports-list" aria-live="polite"><p class="memory-review-empty">Open My Reports to load your submissions.</p></div>
+        </div>
+
+        <div class="tab-pane" id="tab-voice">
+          <h3>Voice</h3>
+          <p class="tab-desc">Choose Jupiter's natural speaking voice and which audio Live Voice may listen to.</p>
+          <div class="jupiter-voice-setting">
+            <label for="jupiter-voice-select"><strong>Jupiter Voice</strong><small>The selection is saved only for this Jupiter account and is used by Read and fallback speech. Native Live uses its provider-supported native voice. Opening Settings does not generate audio.</small></label>
+            <select id="jupiter-voice-select" aria-describedby="jupiter-voice-description">
+              <option value="">Ask when no voice is specified</option>
+              <option value="Iapetus" data-gender="male">Iapetus — Clear</option>
+              <option value="Algieba" data-gender="male">Algieba — Smooth</option>
+              <option value="Achird" data-gender="male">Achird — Friendly</option>
+              <option value="Schedar" data-gender="male">Schedar — Even</option>
+              <option value="Umbriel" data-gender="male">Umbriel — Easy-going</option>
+              <option value="Zubenelgenubi" data-gender="male">Zubenelgenubi — Casual</option>
+              <option value="Charon" data-gender="male">Charon — Informative</option>
+              <option value="Rasalgethi" data-gender="male">Rasalgethi — Informative</option>
+              <option value="Sadaltager" data-gender="male">Sadaltager — Knowledgeable</option>
+              <option value="Orus" data-gender="male">Orus — Firm</option>
+              <option value="Alnilam" data-gender="male">Alnilam — Firm</option>
+              <option value="Puck" data-gender="male">Puck — Upbeat</option>
+              <option value="Sadachbia" data-gender="male">Sadachbia — Lively</option>
+              <option value="Fenrir" data-gender="male">Fenrir — Excitable</option>
+              <option value="Enceladus" data-gender="male">Enceladus — Breathy</option>
+              <option value="Algenib" data-gender="male">Algenib — Gravelly</option>
+              <option value="Aoede" data-gender="female">Aoede — Breezy</option>
+              <option value="Leda" data-gender="female">Leda — Youthful</option>
+              <option value="Kore" data-gender="female">Kore — Firm</option>
+              <option value="Callirrhoe" data-gender="female">Callirrhoe — Easy-going</option>
+              <option value="Despina" data-gender="female">Despina — Smooth</option>
+              <option value="Achernar" data-gender="female">Achernar — Soft</option>
+              <option value="Vindemiatrix" data-gender="female">Vindemiatrix — Gentle</option>
+              <option value="Sulafat" data-gender="female">Sulafat — Warm</option>
+            </select>
+            <div class="jupiter-voice-setting-footer"><small id="jupiter-voice-description">Read/TTS voice: Iapetus. Native Live voice: Leda (provider prebuilt).</small><button type="button" id="reset-jupiter-voice" class="secondary-btn">Reset to Jupiter Default</button></div>
+          </div>
+          <section class="jupiter-voice-samples" aria-labelledby="jupiter-voice-samples-title">
+            <div class="jupiter-voice-samples-heading"><h4 id="jupiter-voice-samples-title"><i class="ph ph-headphones" aria-hidden="true"></i> Listen to every voice</h4><small>Press Sample to hear a short greeting in that voice. Use picks the Read Aloud voice (all voices). A sample is prepared only when you press Sample and is reused after that.</small></div>
+            <div class="jupiter-voice-sample-row is-live" role="group" aria-labelledby="jupiter-live-voice-label">
+              <span class="jupiter-voice-sample-copy"><span class="jupiter-voice-name-row"><label id="jupiter-live-voice-label" for="jupiter-live-voice-select"><strong>Live Conversation voice</strong></label><span class="jupiter-voice-live-badge">Female voices only</span></span><small>Live Conversation and calls always use this voice: only female voices are offered; Leda is the default. The sample is read-aloud audio, so live speech can sound slightly different.</small>
+                <select id="jupiter-live-voice-select" class="jupiter-live-voice-select">
+                  <option value="Aoede">Aoede — Breezy</option>
+                  <option value="Leda">Leda — Youthful (default)</option>
+                  <option value="Kore">Kore — Firm</option>
+                  <option value="Callirrhoe">Callirrhoe — Easy-going</option>
+                  <option value="Despina">Despina — Smooth</option>
+                  <option value="Achernar">Achernar — Soft</option>
+                  <option value="Vindemiatrix">Vindemiatrix — Gentle</option>
+                  <option value="Sulafat">Sulafat — Warm</option>
+                </select></span>
+              <span class="jupiter-voice-sample-actions"><button type="button" id="jupiter-live-voice-sample" data-settings-voice-sample="Leda" aria-label="Play a sample of the Live voice Leda"><i class="ph ph-play" aria-hidden="true"></i><span>Sample</span></button></span>
+            </div>
+            <div id="jupiter-voice-sample-list" class="jupiter-voice-sample-list" role="list" aria-label="Read-aloud voices"></div>
+          </section>
+          <label id="audio-mode-user-option" class="audio-mode-option"><input type="radio" name="settings-audio-mode" value="user" checked><span><strong>User Voice Only</strong><small>Microphone input with echo cancellation. Recommended and enabled by default.</small></span></label>
+          <label id="audio-mode-mixed-option" class="audio-mode-option is-disabled"><input id="audio-mode-mixed" type="radio" name="settings-audio-mode" value="mixed" disabled><span><strong>User Voice + System Audio</strong><small id="audio-mode-mixed-reason">Listen to your microphone and supported audio playing on this device.</small></span></label>
+          <section class="jupiter-permission-settings" aria-label="Device permission help">
+            <h4>Device permissions</h4>
+            <p>Need help with an Allow or Deny prompt? Access is always controlled by your browser or device.</p>
+            <div class="jupiter-permission-actions">
+              <button type="button" class="secondary-btn" data-permission-help="microphone"><i class="ph ph-microphone" aria-hidden="true"></i> Microphone</button>
+              <button type="button" class="secondary-btn" data-permission-help="camera"><i class="ph ph-camera" aria-hidden="true"></i> Camera</button>
+              <button type="button" class="secondary-btn" data-permission-help="screen"><i class="ph ph-monitor" aria-hidden="true"></i> Screen sharing</button>
+              <button type="button" class="secondary-btn" data-permission-help="notifications"><i class="ph ph-bell" aria-hidden="true"></i> Notifications</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="tab-pane" id="tab-contact-requests">
+          <h3>Contact Requests</h3>
+          <p class="tab-desc">People who know you on Jupiter can ask to see your sign-in email or verified mobile number. Nothing is shared until you approve, only the details you approve, and only once. Being in someone's People I Know or sharing memories never gives permission.</p>
+          <section class="contact-request-section" aria-labelledby="contact-incoming-title"><h4 id="contact-incoming-title">Requests for your details</h4><div id="contact-requests-incoming" class="contact-request-list" aria-live="polite"><p class="memory-review-empty">No requests yet.</p></div></section>
+          <section class="contact-request-section" aria-labelledby="contact-ask-title"><h4 id="contact-ask-title">Ask someone</h4>
+            <form id="contact-request-form" class="contact-request-form">
+              <input id="contact-request-recipient" maxlength="120" required autocomplete="off" placeholder="Their exact Jupiter username" aria-label="Their exact Jupiter username">
+              <fieldset><legend>Details to request</legend><label><input type="checkbox" name="contact-field" value="email" checked> Email</label><label><input type="checkbox" name="contact-field" value="phone"> Verified mobile number</label></fieldset>
+              <button type="submit" class="secondary-btn">Send request</button>
+              <p id="contact-request-status" role="status"></p>
+            </form></section>
+          <section class="contact-request-section" aria-labelledby="contact-sharing-title"><h4 id="contact-sharing-title">Share automatically with trusted connections</h4>
+            <p class="tab-desc">Off by default. When on, a trusted connection (someone you both accepted) can view that detail once per request without asking you each time. Everything else still needs your approval.</p>
+            <label class="profile-visibility-toggle"><input id="share-email-trusted" type="checkbox" data-sharing-key="share_email"><span><strong>Email</strong><small>Your sign-in email</small></span></label>
+            <label class="profile-visibility-toggle"><input id="share-phone-trusted" type="checkbox" data-sharing-key="share_phone"><span><strong>Verified mobile number</strong><small>Only if one is verified on your account</small></span></label>
+            <label class="profile-visibility-toggle"><input id="message-alerts-enabled" type="checkbox" data-sharing-key="message_alerts" checked><span><strong>Message alerts on my phone</strong><small>A notification when a Jupiter user messages you (never the message text)</small></span></label>
+            <p id="contact-sharing-status" role="status"></p></section>
+          <section class="contact-request-section" aria-labelledby="contact-trusted-title"><h4 id="contact-trusted-title">Trusted connections</h4>
+            <form id="trusted-connection-form" class="contact-request-form"><input id="trusted-connection-username" maxlength="120" required autocomplete="off" placeholder="Their exact Jupiter username" aria-label="Their exact Jupiter username"><button type="submit" class="secondary-btn">Invite</button><p id="trusted-connection-status" role="status"></p></form>
+            <div id="trusted-connection-list" class="contact-request-list" aria-live="polite"><p class="memory-review-empty">No trusted connections yet.</p></div>
+            <h4>Blocked</h4><div id="blocked-account-list" class="contact-request-list"><p class="memory-review-empty">You haven't blocked anyone.</p></div></section>
+          <section class="contact-request-section" aria-labelledby="contact-outgoing-title"><h4 id="contact-outgoing-title">Your requests</h4><div id="contact-requests-outgoing" class="contact-request-list" aria-live="polite"><p class="memory-review-empty">You haven't asked anyone yet.</p></div></section>
+        </div>
+        <div class="tab-pane" id="tab-privacy">
+          <h3>Privacy &amp; Data</h3>
+          <p class="tab-desc">Private chats, account memories, and connected-service access remain isolated to the authenticated account.</p>
+          <div class="settings-info-card privacy-data-card"><i class="ph ph-lock-key" aria-hidden="true"></i><span><strong>Private Chat / Don't Save This Chat</strong><small>Private turns are excluded from durable memory, normal chat storage, and proactive extraction.</small></span></div>
+          <div class="settings-info-card privacy-data-card account-isolation-card"><i class="ph ph-database" aria-hidden="true"></i><span><strong>Account-isolated storage ✓</strong><small>Your chats, memory, files, and account data stay separated from every other Jupiter account.</small></span></div>
+          <section class="profile-visibility-settings">
+            <div class="memory-heading-row"><h4>My Profile Visibility</h4><span>All private by default</span></div>
+            <p class="tab-desc">What other Jupiter users are allowed to know about you. Nothing here is shared until you switch it on. Chats, memory, Gmail, files, face data, and credentials are never shareable through this.</p>
+            <div class="profile-visibility-toggles">
+              <label class="profile-visibility-toggle"><input id="visibility-display-name" type="checkbox"><span><strong>Display name</strong><small>Your name as saved in your profile.</small></span></label>
+              <label class="profile-visibility-toggle"><input id="visibility-bio" type="checkbox"><span><strong>Bio</strong><small>Your short self-description.</small></span></label>
+              <label class="profile-visibility-toggle"><input id="visibility-interests" type="checkbox"><span><strong>Interests</strong><small>Interests saved in your profile preferences.</small></span></label>
+            </div>
+            <p id="profile-visibility-status" role="status"></p>
+          </section>
+          <section class="people-known-settings">
+            <div class="memory-heading-row"><h4>People I Know</h4><span>Private to you</span></div>
+            <p class="tab-desc">Your own private notes about people in your life. This never becomes anyone else's public profile.</p>
+            <form id="people-known-form" class="people-known-form">
+              <input id="person-name" maxlength="160" required placeholder="Name">
+              <select id="person-relationship">
+                <option value="">Relationship (optional)</option>
+                <option value="friend">Friend</option>
+                <option value="sibling">Sibling</option>
+                <option value="classmate">Classmate</option>
+                <option value="colleague">Colleague</option>
+                <option value="family">Family</option>
+                <option value="partner">Partner</option>
+                <option value="mentor">Mentor</option>
+                <option value="neighbor">Neighbor</option>
+                <option value="other">Other</option>
+              </select>
+              <input id="person-jupiter-username" maxlength="160" placeholder="Jupiter username (optional)">
+              <textarea id="person-notes" maxlength="2000" placeholder="Private notes (optional)"></textarea>
+              <button type="submit" class="secondary-btn">Save person</button><p id="people-known-status" role="status"></p>
+            </form>
+            <div id="people-known-list" class="people-known-list"></div>
+          </section>
+          <section class="shared-memory-settings">
+            <div class="memory-heading-row"><h4>Explicitly Shared Person Facts</h4><span>Explicit opt-in only</span></div>
+            <p class="tab-desc">Private is the default. Sensitive, Gmail, credential, health, face, financial, and Private Chat sources cannot be shared.</p>
+            <form id="shared-memory-form" class="shared-memory-form">
+              <input id="shared-memory-subject" maxlength="160" required placeholder="Person or subject">
+              <textarea id="shared-memory-fact" maxlength="2000" required placeholder="One fact you explicitly want to share"></textarea>
+              <select id="shared-memory-scope"><option value="PRIVATE">Private</option><option value="SHARE_WITH_USERS">Share with selected users</option><option value="SHARED_PROFILE">Shared profile</option></select>
+              <input id="shared-memory-users" maxlength="1000" placeholder="Selected users: exact emails, comma-separated" disabled>
+              <label class="shared-memory-attribution"><input id="shared-memory-attribution" type="checkbox"> Allow source attribution</label>
+              <button type="submit" class="secondary-btn">Save visibility</button><p id="shared-memory-status" role="status"></p>
+            </form>
+            <div id="shared-memory-list"></div>
+          </section>
+          <section class="face-recognition-settings"><div class="memory-heading-row"><h4>Face Recognition</h4><span>Consent required</span></div><p class="tab-desc">Manage only the Face++ references enrolled for this account. Original uploaded files remain controlled separately.</p><div id="face-references-list" class="face-references-list"></div></section>
+        </div>
+
+        <div class="tab-pane" id="tab-uploaded-files">
+          <h3>Uploaded Files</h3>
+          <p class="tab-desc">Manage user-owned source files separately from Memory.</p>
+          <section class="uploaded-files-settings">
+            <div class="memory-heading-row" style="margin-bottom: 12px;">
+              <h4>Storage</h4>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="uploaded-files-usage" style="color: var(--text-muted); font-size: 0.85rem;">Loading...</span>
+                <button type="button" id="delete-all-uploaded-files" class="action-btn-small" style="padding: 4px 10px; border: 1px solid rgba(255,105,125,0.28); color: #ffc9d0; background: rgba(130,30,49,0.14); border-radius: 6px; cursor: pointer; font-size: 0.8rem;">Delete All</button>
+              </div>
+            </div>
+            <div class="memory-search-box" style="margin-top: 0; margin-bottom: 12px;"><i class="ph ph-magnifying-glass"></i><input id="uploaded-files-search" type="search" placeholder="Search uploaded files..."></div>
+            <div id="uploaded-files-warnings" role="status"></div>
+            <div id="uploaded-files-list" class="uploaded-files-list"></div>
+          </section>
+        </div>
+
+        <div class="tab-pane" id="tab-call-log">
+          <h3>Call Log</h3>
+          <p class="tab-desc">Your latest incoming Jupiter calls, including answered and missed calls. Live Conversation stays available through its existing controls.</p>
+          <button type="button" id="refresh-call-history" class="secondary-btn"><i class="ph ph-arrow-clockwise" aria-hidden="true"></i> Refresh</button>
+          <div id="call-history-list" class="profile-record-list" aria-live="polite"><p class="memory-review-empty">Open Call Log to load your calls.</p></div>
+        </div>
+        <div class="tab-pane" id="tab-created-files">
+          <h3>Created Files</h3>
+          <p class="tab-desc">Files Jupiter has generated and saved to your account. Private and temporary-session files are not included. Uploaded Files remains separate.</p>
+          <button type="button" id="refresh-generated-files" class="secondary-btn"><i class="ph ph-arrow-clockwise" aria-hidden="true"></i> Refresh</button>
+          <div id="generated-files-list" class="profile-record-list" aria-live="polite"><p class="memory-review-empty">Open Created Files to load your files.</p></div>
+        </div>
+
+        <div class="tab-pane" id="tab-downloads">
+          <h3>Downloads</h3>
+          <p class="tab-desc">Choose where Jupiter saves downloadable artifacts on this device.</p>
+          <div class="download-settings-card">
+            <div class="download-location-row">
+              <span><strong>Download location</strong><small id="download-location-label">Downloads</small></span>
+              <button type="button" id="change-download-location" class="secondary-btn">Change</button>
+            </div>
+            <fieldset class="download-behavior" aria-describedby="download-settings-status">
+              <legend>Download behavior</legend>
+              <label><input type="radio" name="download-behavior" value="ask"><span><strong>Always ask where to save</strong><small>Open the platform save picker for each download.</small></span></label>
+              <label><input type="radio" name="download-behavior" value="automatic"><span><strong>Save automatically</strong><small>Save directly to the location shown above.</small></span></label>
+            </fieldset>
+            <p id="download-settings-status" class="tab-desc" role="status"></p>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-account">
+          <h3>Account</h3>
+          <p class="tab-desc">Manage account access and sign out of this Jupiter session.</p>
+          <div class="profile-api-setting">
+            <label class="profile-field-label">Google AI Studio API <span class="api-required-label">Required for regular users</span></label>
+            <a class="provider-api-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"><i class="ph ph-arrow-square-out" aria-hidden="true"></i> Get a Google AI Studio API key</a>
+            <div class="profile-api-status-row">
+              <div><strong id="profile-api-connection">Not connected</strong><span id="profile-api-masked">No API key saved</span></div>
+              <button type="button" id="btn-replace-api-key" class="secondary-btn">Replace API Key</button>
+            </div>
+            <div id="profile-api-reverify-warning" class="profile-api-reverify-warning hidden" role="alert">
+              <i class="ph-fill ph-warning-circle" aria-hidden="true"></i>
+              <div><strong>Google AI Studio API needs attention</strong><span>Your Google AI Studio API key is no longer working. Please verify or replace it.</span></div>
+              <button type="button" id="btn-reverify-api-key" class="secondary-btn">Re-verify API</button>
+            </div>
+            <div id="profile-api-replace-form" class="profile-api-replace-form hidden">
+              <div class="input-group"><i class="ph ph-key"></i><input type="password" id="profile-google-api-key" placeholder="Paste replacement Gemini API key" autocomplete="new-password" spellcheck="false"></div>
+              <p id="profile-api-message" class="api-key-inline-status" role="status"></p>
+              <div class="profile-api-actions"><button type="button" id="btn-cancel-api-replace" class="secondary-btn">Cancel</button><button type="button" id="btn-save-replacement-api-key" class="primary-btn">Validate and Replace</button></div>
+            </div>
+          </div>
+          <section class="optional-provider-settings" aria-labelledby="optional-providers-title">
+            <h4 id="optional-providers-title">API providers</h4>
+            <p class="optional-provider-note">Your keys stay private to your account and are used only for eligible tasks and models. Existing managed fallback order is preserved.</p>
+            <div id="profile-optional-providers"><p class="optional-provider-note">Open Account settings to load your providers.</p></div>
+          </section>
+          <button id="btn-logout" class="account-logout-btn" type="button"><i class="ph ph-sign-out"></i> Logout</button>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="auth-alert-modal" class="modal-overlay hidden" style="z-index: 10001; display: flex; align-items: center; justify-content: center;">
+    <div class="modal-content glass-modal" style="max-width: 400px; text-align: center; padding: 30px; position: relative;">
+      <i class="ph ph-info" style="font-size: 3rem; color: #a78bfa; margin-bottom: 15px; display: inline-block;"></i>
+      <h2 id="auth-alert-title" style="margin-bottom: 10px;">Account already exists</h2>
+      <p id="auth-alert-message" style="color: var(--text-secondary); margin-bottom: 25px;">This email is already registered. Please log in instead.</p>
+      <button id="btn-auth-alert-action" class="primary-btn" style="width: 100%;">Go to Login</button>
+    </div>
+  </div>
+
+  <script>
+    document.write(`<script src="live_voice_orb.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="live_voice_policy.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="profile_photo.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="tts_selection.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write('<link rel="stylesheet" href="assets/katex/katex.min.css?v=0.18.7">');
+    document.write('<script src="assets/katex/katex.min.js?v=0.18.7"><\/script>');
+    document.write(`<script src="math_presentation.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="interactive_response.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="device_permissions.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="release_updates.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="live_media.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="live_visual_labels.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="live_orb_transition.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="copyable_blocks.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="ui_affordances.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="optional_providers.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="computer_use_intents.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="desktop_assistant_intents.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="jupiter_calls.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+    document.write(`<script src="profile_records.js?v=${encodeURIComponent(jupiterFrontendVersion)}"><\/script>`);
+  </script>
+  <script>
+    // Jupiter AT must consume the current laptop client on every native
+    // launch. A launch-specific script URL bypasses only disposable static
+    // caching; auth, cookies, localStorage, and sessionStorage are untouched.
+    const jupiterPageParams = new URLSearchParams(window.location.search);
+    const isJupiterAtDevelopment = jupiterPageParams.get('jupiter-dev') === 'android-test';
+    const appScriptSource = isJupiterAtDevelopment
+      ? `app.js?v=${encodeURIComponent(jupiterFrontendVersion)}&jupiter-at=${encodeURIComponent(jupiterPageParams.get('launch') || Date.now())}`
+      : `app.js?v=${encodeURIComponent(jupiterFrontendVersion)}`;
+    document.write(`<script src="${appScriptSource}"><\/script>`);
+  </script>
+  <script>
+    // A build-version change retires only disposable Jupiter static caches.
+    // Account/session storage and all durable user data remain untouched.
+    const temporarySttKeys = ['jupiter_stt_draft', 'jupiter_stt_transcript', 'jupiter_voice_interim'];
+    // Temporary microphone drafts are never a reload/hydration source. Typed
+    // composer drafts and every durable account record remain untouched.
+    temporarySttKeys.forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    const previousFrontendVersion = localStorage.getItem('jupiter_frontend_version');
+    if (previousFrontendVersion !== jupiterFrontendVersion) {
+      localStorage.setItem('jupiter_frontend_version', jupiterFrontendVersion);
+      if ('caches' in window) {
+        caches.keys().then((names) => Promise.all(names
+          .filter((name) => (name.startsWith('jupiter-static-') || name.startsWith('jupiter-cache-'))
+            && name !== `jupiter-static-${jupiterFrontendVersion}`)
+          .map((name) => caches.delete(name))));
+      }
+    }
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) window.location.reload();
+    });
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        if (window.location.protocol === 'file:' || isJupiterAtDevelopment) {
+          navigator.serviceWorker.getRegistrations()
+            .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
+            .catch(err => console.log('SW cleanup failed: ', err));
+        } else {
+          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+            .then(registration => registration.update())
+            .catch(err => console.log('SW registration failed: ', err));
+        }
+      });
+    }
+  </script>
+
+  <div id="chat-menu-portal" class="chat-menu hidden" role="menu" aria-label="Chat options"></div>
+
+  <div id="image-viewer" class="image-viewer hidden" role="dialog" aria-modal="true" aria-labelledby="image-viewer-title">
+    <header class="image-viewer-toolbar">
+      <span id="image-viewer-title" class="image-viewer-title">Image</span>
+      <div class="image-viewer-actions">
+        <button id="image-viewer-zoom-out" class="icon-btn" type="button" aria-label="Zoom out" title="Zoom out"><i class="ph ph-minus"></i></button>
+        <button id="image-viewer-zoom-in" class="icon-btn" type="button" aria-label="Zoom in" title="Zoom in"><i class="ph ph-plus"></i></button>
+        <button id="image-viewer-reset" class="icon-btn" type="button" aria-label="Reset zoom" title="Reset zoom"><i class="ph ph-arrows-in"></i></button>
+        <button id="image-viewer-open-original" class="icon-btn" type="button" aria-label="Open original image" title="Open original"><i class="ph ph-arrow-square-out"></i></button>
+        <button id="image-viewer-download" class="icon-btn" type="button" aria-label="Download original image" title="Download"><i class="ph ph-download-simple"></i></button>
+        <button id="image-viewer-close" class="icon-btn" type="button" aria-label="Close image viewer" title="Close"><i class="ph ph-x"></i></button>
+      </div>
+    </header>
+    <div id="image-viewer-stage" class="image-viewer-stage">
+      <img id="image-viewer-image" alt="">
+    </div>
+  </div>
+
+  <div id="attachment-menu" class="attachment-menu hidden" role="menu" aria-label="Attachment options">
+    <button type="button" role="menuitem" data-attachment-action="files"><i class="ph ph-paperclip"></i><span>Add photos &amp; files</span></button>
+    <button type="button" role="menuitem" data-attachment-action="image"><i class="ph ph-image-square"></i><span>Create image</span></button>
+    <button type="button" role="menuitem" data-attachment-action="gmail"><i class="ph ph-envelope-simple gmail-mark"></i><span>Gmail</span></button>
+  </div>
+
+  <div id="active-users-modal" class="modal-overlay active-users-modal hidden" role="dialog" aria-modal="true" aria-labelledby="active-users-title">
+    <section class="active-users-panel" aria-live="polite">
+      <header class="active-users-header">
+        <div>
+          <span class="active-users-eyebrow">OWNER DASHBOARD</span>
+          <h2 id="active-users-title">Users Online</h2>
+        </div>
+        <button id="close-active-users" class="icon-btn" type="button" aria-label="Close users online panel"><i class="ph ph-x"></i></button>
+      </header>
+      <p id="active-users-scope" class="active-users-scope">Current calendar month · provider-reported model tokens · resets automatically each month.</p>
+      <button id="toggle-online-users" class="offline-users-toggle active-users-section-toggle" type="button" aria-expanded="true" aria-controls="active-users-online-list"><span><span class="status-dot online"></span>Online</span><i class="ph-bold ph-caret-right offline-caret" aria-hidden="true"></i></button>
+      <div id="active-users-online-list" class="active-users-list"></div>
+      <button id="toggle-registration-requests" class="offline-users-toggle active-users-section-toggle registration-requests-heading" type="button" aria-expanded="true" aria-controls="registration-requests-list"><span><i class="ph ph-user-plus"></i>Registration Requests <span id="owner-registration-heading-badge" class="owner-registration-heading-badge hidden">0 new</span></span><i class="ph-bold ph-caret-right offline-caret" aria-hidden="true"></i></button>
+      <div id="registration-requests-list" class="registration-requests-list"></div>
+      <button id="toggle-offline-users" class="offline-users-toggle" type="button" aria-expanded="false" aria-controls="active-users-offline-list">
+        <span><i class="ph-fill ph-circle status-dot-icon"></i>Offline</span>
+        <i class="ph-bold ph-caret-right offline-caret" aria-hidden="true"></i>
+      </button>
+      <div id="active-users-offline-list" class="active-users-list offline hidden"></div>
+      <div id="active-users-error" class="active-users-error hidden" role="status"></div>
+    </section>
+  </div>
+
+  <div id="report-form-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="report-form-title">
+    <form id="report-form" class="modal-content glass-modal report-form-card">
+      <header><h2 id="report-form-title">Report this response</h2><button id="report-form-close" type="button" class="icon-btn" aria-label="Close"><i class="ph ph-x"></i></button></header>
+      <p id="report-form-context" class="report-form-context hidden"></p>
+      <label>Description<textarea id="report-what-went-wrong" maxlength="2000"></textarea></label>
+      <label>How could it be improved? <small>Optional</small><textarea id="report-improvement" maxlength="2000"></textarea></label>
+      <label>Attachments <small>Images, video, audio, documents, archives, or other files</small><input id="report-attachment-input" type="file" multiple></label>
+      <div id="report-attachment-list" class="report-attachment-list" aria-live="polite"></div>
+      <p id="report-form-status" role="status"></p><button class="primary-btn" type="submit">Submit Report</button>
+    </form>
+  </div>
+
+  <div id="staff-reports-modal" class="modal-overlay active-users-modal hidden" role="dialog" aria-modal="true" aria-labelledby="staff-reports-title">
+    <section class="active-users-panel staff-reports-panel"><header class="active-users-header"><div><span class="active-users-eyebrow">AUTHORIZED QUEUE</span><h2 id="staff-reports-title">User Reports</h2></div><button id="staff-reports-close" class="icon-btn" type="button" aria-label="Close"><i class="ph ph-x"></i></button></header><div id="staff-reports-list" class="reports-list"></div></section>
+  </div>
+
+  <div id="user-record-modal" class="modal-overlay active-users-modal hidden" role="dialog" aria-modal="true" aria-labelledby="user-record-title">
+    <section class="active-users-panel staff-reports-panel"><header class="active-users-header"><div><span class="active-users-eyebrow">AUTHORIZED DIRECTORY</span><h2 id="user-record-title">User Record</h2></div><button id="user-record-close" class="icon-btn" type="button" aria-label="Close"><i class="ph ph-x"></i></button></header><div id="user-record-list" class="owner-user-management-list staff-user-record-list"></div></section>
+  </div>
+
+  <div id="api-health-modal" class="modal-overlay api-health-modal hidden" role="dialog" aria-modal="true" aria-labelledby="api-health-title">
+    <section class="api-health-panel">
+      <header class="api-health-header">
+        <div><span class="active-users-eyebrow">OWNER DASHBOARD</span><h2 id="api-health-title">API Health Centre</h2></div>
+        <div class="api-health-header-actions"><button id="api-health-report" class="secondary-btn" type="button"><i class="ph ph-file-text" aria-hidden="true"></i> Generate Health Report</button><button id="api-health-close" class="icon-btn" type="button" aria-label="Close API Health Centre"><i class="ph ph-x"></i></button></div>
+      </header>
+      <p id="api-health-status" class="api-health-status" role="status" aria-live="polite">Loading redacted provider health…</p>
+      <div id="api-health-summary" class="api-health-summary"></div>
+      <h3>Provider configuration and routing eligibility</h3>
+      <div id="api-health-configuration" class="api-health-table-wrap"></div>
+      <h3>Google credential pool (secret-free)</h3>
+      <div id="api-health-google-pool" class="api-health-table-wrap"></div>
+      <h3>Provider and model health</h3>
+      <div id="api-health-providers" class="api-health-table-wrap"></div>
+      <h3>Quota pressure by credential class</h3>
+      <div id="api-health-quota" class="api-health-table-wrap"></div>
+      <h3>Normalized error events</h3>
+      <div id="api-health-events" class="api-health-events"></div>
+      <h3>Routing assignments</h3>
+      <div id="api-health-routing" class="api-health-table-wrap"></div>
+      <h3>Catalog / model changes</h3>
+      <div id="api-health-catalog" class="api-health-table-wrap"></div>
+    </section>
+  </div>
+
+  <div id="jupiter-confirm-modal" class="modal-overlay jupiter-confirm-modal hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="jupiter-confirm-title" aria-describedby="jupiter-confirm-message">
+    <div class="modal-content glass-modal jupiter-confirm-card">
+      <div class="confirm-icon"><i class="ph ph-warning"></i></div>
+      <h2 id="jupiter-confirm-title">Confirm action</h2>
+      <p id="jupiter-confirm-message"></p>
+      <p id="jupiter-confirm-warning" class="confirm-warning">This action cannot be undone.</p>
+      <div class="confirm-actions">
+        <button id="jupiter-confirm-cancel" type="button" class="secondary-btn">Cancel</button>
+        <button id="jupiter-confirm-accept" type="button" class="destructive-btn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+
+
+
+
+
+
+
+
+
+
+</html>

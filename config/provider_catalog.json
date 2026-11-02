@@ -1,0 +1,1078 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-07",
+  "notes": [
+    "Provider-level catalog: WHO Jupiter can talk to and HOW credentials are organised (provider -> accounts -> credentials). It never contains a secret: every credential names environment variables, and values are read only from the process environment (.env / host secrets).",
+    "Model capabilities are NOT declared here. They live per model in config/model_registry.json and are recorded only from real provider support after integration and verification. A planned provider therefore has no capabilities yet.",
+    "Rate limits / free-tier ceilings live in config/quota_limits.json (provider and model sections). A free tier is never assumed permanent: free_tier.status is 'unverified' until a quota entry with a source exists.",
+    "Google Gemini accounts and credentials are owned by config/credential_policy.py (priority order, per-credential model restrictions, project quota groups); this catalog only points there.",
+    "To add another key for an integrated provider: add a credential (its own env NAME, e.g. GROQ_API_KEY_2) under an existing or new account. Lower priority numbers are tried first; a model row may pin one credential with credential_owner_id.",
+    "kind: model_provider = serves models directly; gateway = one API in front of many upstream model providers; specialist_api = a non-chat service (search, OCR, speech, data, security, email); router = self-hosted routing software that forwards to other providers and is never itself an inference provider.",
+    "free_policy is the DEFAULT free-only routing gate. Only 'recurring' providers with an integrated adapter serve automatic routing. Every other value (conditional_development, conditional_recurring, promotional_limited_time, signup_finite, paid, unverified, mixed, recurring_evaluation, recurring_development, recurring_noncommercial) is retained but excluded by default: unknown or conditional terms fail closed.",
+    "Published allowances are planning data, not an account's remaining balance. Keys sharing a project/organization/IP never multiply quota."
+  ],
+  "providers": [
+    {
+      "id": "google",
+      "name": "Google AI Studio / Gemini API",
+      "kind": "model_provider",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_GOOGLE",
+      "credential_fields": [
+        "api_key",
+        "project_id"
+      ],
+      "accounts_source": "config/credential_policy.py",
+      "capability_source": "config/model_registry.json",
+      "free_policy": "recurring",
+      "terms": [
+        "free_tier_content_may_improve_google_products",
+        "quota_per_project_not_per_key"
+      ],
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/rate-limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA NIM API",
+      "kind": "model_provider",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_NVIDIA",
+      "credential_fields": [
+        "api_key"
+      ],
+      "capability_source": "config/model_registry.json",
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "nvidia-primary",
+              "env": [
+                "NVIDIA_API_KEY"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "conditional_development",
+      "terms": [
+        "prototyping_research_testing_only",
+        "production_requires_ai_enterprise_license"
+      ],
+      "sources": [
+        "https://docs.api.nvidia.com/nim/docs/product"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI / ChatGPT API",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "paid",
+      "terms": [
+        "general_inference_paid",
+        "omni_moderation_free_classification_only"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/pricing"
+      ],
+      "checked_at": "2026-10-07",
+      "notes": "OpenAI-compatible protocol is not an allowance. Ordinary OpenAI API inference is paid and never enters automatic free-only routing; existing settings/credentials are left untouched."
+    },
+    {
+      "id": "groq",
+      "name": "Groq API",
+      "kind": "model_provider",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_GROQ",
+      "credential_fields": [
+        "api_key"
+      ],
+      "capability_source": "config/model_registry.json",
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "groq-primary",
+              "env": [
+                "GROQ_API_KEY"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "limits_per_organization",
+        "free_plan_lists_specific_models_only"
+      ],
+      "sources": [
+        "https://console.groq.com/docs/rate-limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "faceplusplus",
+      "name": "Face++ API",
+      "kind": "specialist_api",
+      "status": "integrated",
+      "credential_scope": "JUPITER_FACEPLUSPLUS",
+      "credential_fields": [
+        "api_key",
+        "api_secret"
+      ],
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "facepp-primary",
+              "env": [
+                "FACEPP_API_KEY"
+              ],
+              "secret_env": [
+                "FACEPP_API_SECRET"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "endpoint_specific_monthly_quota",
+        "multiple_account_exploitation_restricted"
+      ],
+      "sources": [
+        "https://www.faceplusplus.com/blog/face-overseas-free-policy-adjustment-notice/"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter API",
+      "kind": "gateway",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_OPENROUTER",
+      "credential_fields": [
+        "api_key"
+      ],
+      "capability_source": "config/model_registry.json",
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "openrouter-primary",
+              "env": [
+                "OPENROUTER_API_KEY"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "shared_account_daily_limit",
+        "per_route_price_and_upstream_terms_must_be_checked"
+      ],
+      "sources": [
+        "https://openrouter.ai/docs/api_reference/limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode Zen Free API",
+      "kind": "gateway",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_OPENCODE",
+      "credential_fields": [
+        "api_key"
+      ],
+      "capability_source": "config/model_registry.json",
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "opencode-primary",
+              "env": [
+                "OPENCODE_ZEN_API_KEY"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "promotional_limited_time",
+      "terms": [
+        "zero_price_entries_limited_time",
+        "some_routes_trial_terms_or_training"
+      ],
+      "sources": [
+        "https://opencode.ai/docs/zen"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare (Workers AI, API token, Turnstile)",
+      "kind": "model_provider",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_CLOUDFLARE",
+      "credential_fields": [
+        "api_token",
+        "account_id",
+        "turnstile_site_key",
+        "turnstile_secret_key"
+      ],
+      "capability_source": "config/model_registry.json",
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "account_env": [
+            "CLOUDFLARE_ACCOUNT_ID"
+          ],
+          "credentials": [
+            {
+              "id": "cloudflare-primary",
+              "env": [
+                "CLOUDFLARE_API_TOKEN"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "planned_fields": [
+        "turnstile_site_key",
+        "turnstile_secret_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "10000_neurons_per_day_shared",
+        "listed_frontier_models_paid_only"
+      ],
+      "sources": [
+        "https://developers.cloudflare.com/workers-ai/platform/pricing/"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "bytez",
+      "name": "Bytez API",
+      "kind": "gateway",
+      "status": "integrated",
+      "credential_scope": "JUPITER_SHARED_BYTEZ",
+      "credential_fields": [
+        "api_key"
+      ],
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "bytez-primary",
+              "env": [
+                "BYTEZ_API_KEY"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "conditional_recurring",
+      "terms": [
+        "eligible_models_unresolved",
+        "one_concurrent_request"
+      ],
+      "sources": [
+        "https://raw.githubusercontent.com/Bytez-com/docs/main/docs/model-api/docs/billing.mdx"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral API",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "monthly_api_credits",
+        "organization_limits_unverified"
+      ],
+      "sources": [
+        "https://mistral.ai/pricing/"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "tavily",
+      "name": "Tavily API",
+      "kind": "specialist_api",
+      "status": "integrated",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "1000_credits_per_month",
+        "no_card_required",
+        "basic_search_1_credit",
+        "http_432_at_plan_limit",
+        "paygo_separate_opt_in_limit_http_433"
+      ],
+      "sources": [
+        "https://docs.tavily.com/documentation/api-credits",
+        "https://docs.tavily.com/documentation/api-reference/endpoint/search",
+        "https://docs.tavily.com/documentation/api-reference/endpoint/usage",
+        "https://docs.tavily.com/documentation/rate-limits"
+      ],
+      "checked_at": "2026-10-08",
+      "zero_cost_safeguards": "services/web_search.py: basic only, 950-credit account-wide persistent cap, fresh /usage (Researcher plan, paygo_usage 0), owner billing confirmation, 432/433 stop, no paid fallback"
+    },
+    {
+      "id": "jina",
+      "name": "Jina AI API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "mixed",
+      "terms": [
+        "keyless_reader_free",
+        "keyed_tokens_finite",
+        "embeddings_noncommercial_exception"
+      ],
+      "sources": [
+        "https://jina.ai/reader/"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "exa",
+      "name": "Exa AI API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "monthly_credit_allowance"
+      ],
+      "sources": [
+        "https://exa.ai/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere API",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring_evaluation",
+      "terms": [
+        "trial_keys_not_for_production"
+      ],
+      "sources": [
+        "https://docs.cohere.com/v2/docs/rate-limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "deepgram",
+      "name": "Deepgram API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "signup_finite",
+      "terms": [
+        "signup_credit_does_not_replenish"
+      ],
+      "sources": [
+        "https://deepgram.com/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring_noncommercial",
+      "terms": [
+        "free_license_noncommercial"
+      ],
+      "sources": [
+        "https://elevenlabs.io/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "assemblyai",
+      "name": "AssemblyAI API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "signup_finite",
+      "terms": [
+        "signup_balance_does_not_replenish"
+      ],
+      "sources": [
+        "https://support.assemblyai.com/articles/5370767329-can-i-sign-up-for-free"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face API / Inference Providers",
+      "kind": "gateway",
+      "status": "planned",
+      "credential_fields": [
+        "access_token"
+      ],
+      "free_policy": "paid",
+      "terms": [
+        "free_users_no_included_inference_credits"
+      ],
+      "sources": [
+        "https://huggingface.co/docs/inference-providers/en/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "pollinations",
+      "name": "Pollinations.ai API",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key_optional"
+      ],
+      "free_policy": "unverified",
+      "terms": [
+        "recurring_allowance_not_established"
+      ],
+      "sources": [
+        "https://raw.githubusercontent.com/pollinations/pollinations/main/APIDOCS.md"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "virustotal",
+      "name": "VirusTotal API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring_noncommercial",
+      "terms": [
+        "multiple_accounts_forbidden"
+      ],
+      "sources": [
+        "https://docs.virustotal.com/reference/public-vs-premium-api"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "ocrspace",
+      "name": "OCR.space API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "500_per_day_per_ip",
+        "1mb_input_three_pdf_pages"
+      ],
+      "sources": [
+        "https://ocr.space/ocrapi"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "resend",
+      "name": "Resend API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "3000_per_month_100_per_day",
+        "sender_domain_verification"
+      ],
+      "sources": [
+        "https://resend.com/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "coingecko",
+      "name": "CoinGecko API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key_optional"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "demo_scope_attribution"
+      ],
+      "sources": [
+        "https://www.coingecko.com/en/api/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "alphavantage",
+      "name": "Alpha Vantage API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring_noncommercial",
+      "terms": [
+        "25_per_day",
+        "realtime_us_premium"
+      ],
+      "sources": [
+        "https://www.alphavantage.co/support/"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "newsapi",
+      "name": "NewsAPI",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring_development",
+      "terms": [
+        "development_only_24h_delay"
+      ],
+      "sources": [
+        "https://newsapi.org/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "github",
+      "name": "GitHub REST API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "token"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "per_user_hourly_quota"
+      ],
+      "sources": [
+        "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "unsplash",
+      "name": "Unsplash API",
+      "kind": "specialist_api",
+      "status": "planned",
+      "credential_fields": [
+        "access_key",
+        "secret_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "attribution_and_hotlinking_rules"
+      ],
+      "sources": [
+        "https://unsplash.com/documentation"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "openweather",
+      "name": "OpenWeatherMap API",
+      "kind": "specialist_api",
+      "status": "integrated",
+      "credential_scope": "JUPITER_OPENWEATHER",
+      "credential_fields": [
+        "api_key"
+      ],
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary account",
+          "credentials": [
+            {
+              "id": "openweather-primary",
+              "env": [
+                "OPENWEATHER_API_KEY"
+              ],
+              "priority": 1
+            }
+          ]
+        }
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "classic_free_endpoints_only",
+        "one_call_is_pay_per_call"
+      ],
+      "sources": [
+        "https://openweathermap.org/price"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "deepinfra",
+      "name": "DeepInfra",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "paid",
+      "terms": [
+        "no_recurring_free_allowance_verified"
+      ],
+      "sources": [
+        "https://deepinfra.com/pricing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "together",
+      "name": "Together AI",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "unverified",
+      "terms": [],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks AI",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "unverified",
+      "terms": [],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras Inference",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "unverified",
+      "terms": [
+        "promotional_access_possible"
+      ],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "replicate",
+      "name": "Replicate",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_token"
+      ],
+      "free_policy": "paid",
+      "terms": [
+        "limited_free_use_ends_with_billing"
+      ],
+      "sources": [
+        "https://replicate.com/docs/topics/billing"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "nebius",
+      "name": "Nebius AI Studio",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "unverified",
+      "terms": [],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "fal",
+      "name": "fal.ai",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "promotional_limited_time",
+      "terms": [
+        "promotional_credits_expire_90_days"
+      ],
+      "sources": [
+        "https://fal.ai/legal/terms-of-service"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "sambanova",
+      "name": "SambaNova Cloud",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "unverified",
+      "terms": [],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "baseten",
+      "name": "Baseten",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "paid",
+      "terms": [
+        "starter_credits_finite"
+      ],
+      "sources": [
+        "https://www.baseten.co/pricing/"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "lepton",
+      "name": "Lepton AI",
+      "kind": "model_provider",
+      "status": "planned",
+      "credential_fields": [
+        "api_token"
+      ],
+      "free_policy": "unverified",
+      "terms": [],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "google_cloud_vision",
+      "name": "Google Cloud Vision",
+      "kind": "specialist_api",
+      "status": "integrated",
+      "credential_scope": "JUPITER_GOOGLE_CLOUD_VISION",
+      "credential_fields": [
+        "service_account_or_adc",
+        "project_id"
+      ],
+      "accounts": [
+        {
+          "id": "primary",
+          "label": "Primary project",
+          "account_env": [
+            "GOOGLE_CLOUD_PROJECT"
+          ],
+          "credentials": [
+            {
+              "id": "cloud-vision-adc",
+              "env": [
+                "GOOGLE_APPLICATION_CREDENTIALS"
+              ],
+              "priority": 1,
+              "kind": "file_path"
+            }
+          ]
+        }
+      ],
+      "free_policy": "unverified",
+      "terms": [
+        "free_quota_not_researched"
+      ],
+      "sources": [],
+      "checked_at": null
+    },
+    {
+      "id": "kilo",
+      "name": "Kilo AI Gateway",
+      "kind": "gateway",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "200_per_hour_per_ip_shared",
+        "auto_free_may_select_trial_or_training_endpoints"
+      ],
+      "sources": [
+        "https://kilo.ai/docs/gateway/usage-and-billing",
+        "https://kilo.ai/docs/gateway/models-and-providers"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "requesty",
+      "name": "Requesty Gateway",
+      "kind": "gateway",
+      "status": "planned",
+      "credential_fields": [
+        "api_key"
+      ],
+      "free_policy": "recurring",
+      "terms": [
+        "200_per_day_free_models",
+        "upstream_terms_apply"
+      ],
+      "sources": [
+        "https://www.requesty.ai/free-models"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "id": "litellm",
+      "name": "LiteLLM (self-hosted router)",
+      "kind": "router",
+      "status": "planned",
+      "credential_fields": [
+        "endpoint_url",
+        "virtual_key_optional"
+      ],
+      "free_policy": "not_applicable",
+      "terms": [
+        "uses_upstream_allowance_creates_no_quota",
+        "keep_explicit_free_route_allowlist"
+      ],
+      "sources": [
+        "https://docs.litellm.ai/docs/"
+      ],
+      "checked_at": "2026-10-07",
+      "notes": "Router software, not an inference provider. Requests are attributed to the upstream provider/model and its free policy."
+    }
+  ],
+  "model_policies": [
+    {
+      "provider": "groq",
+      "model_ids": [
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "allam-2-7b"
+      ],
+      "policy": "excluded",
+      "reason": "absent_from_groq_free_plan_table",
+      "sources": [
+        "https://console.groq.com/docs/rate-limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "provider": "openrouter",
+      "model_prefix": "nvidia/",
+      "policy": "no_user_content",
+      "reason": "nvidia_trial_terms_prototyping_only_no_personal_or_confidential_data",
+      "sources": [
+        "https://docs.api.nvidia.com/nim/docs/product",
+        "https://opencode.ai/docs/zen"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "provider": "openrouter",
+      "model_ids": [
+        "openrouter/free"
+      ],
+      "policy": "no_user_content",
+      "reason": "dynamic_router_upstream_and_terms_undetermined",
+      "sources": [
+        "https://openrouter.ai/docs/api_reference/limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "provider": "groq",
+      "model_ids": [
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo"
+      ],
+      "policy": "free_plan_listed",
+      "reason": "listed_in_groq_free_plan_rate_limit_table_catalog_price_is_developer_tier",
+      "limits": {
+        "openai/gpt-oss-20b": "30 RPM, 1000 RPD, 8000 TPM, 200000 TPD",
+        "openai/gpt-oss-120b": "30 RPM, 1000 RPD, 8000 TPM, 200000 TPD",
+        "qwen/qwen3.8-27b": "30 RPM, 1000 RPD, 8000 TPM, 200000 TPD (preview)",
+        "whisper-large-v3": "20 RPM, 2000 RPD, 7200 audio s/h, 28800/day",
+        "whisper-large-v3-turbo": "20 RPM, 2000 RPD, 7200 audio s/h, 28800/day"
+      },
+      "sources": [
+        "https://console.groq.com/docs/rate-limits"
+      ],
+      "checked_at": "2026-10-07"
+    },
+    {
+      "provider": "openrouter",
+      "model_prefix": "poolside/",
+      "policy": "no_user_content",
+      "reason": "zero_priced_free_endpoint_but_poolside_privacy_policy_trains_on_inputs_unless_opted_out",
+      "evidence": {
+        "pricing": "prompt 0 / completion 0 (OpenRouter endpoints API, 2026-10-08)",
+        "policy_quote": "training our machine learning models (unless you opt-out)",
+        "policy_updated": "2026-07-21"
+      },
+      "sources": [
+        "https://openrouter.ai/api/v1/models/poolside/laguna-s-2.1:free/endpoints",
+        "https://poolside.ai/legal/privacy",
+        "https://openrouter.ai/docs/api-reference/limits"
+      ],
+      "checked_at": "2026-10-08"
+    }
+  ],
+  "tool_policies": {
+    "google_search_grounding": {
+      "free_models": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite"
+      ],
+      "free_allowance": "500 requests/day shared between the two models (per project)",
+      "live_models_supported": [
+        "gemini-3.8-live",
+        "gemini-3.8-live-extended-thinking",
+        "gemini-3.1-flash-live-preview"
+      ],
+      "not_available_free": [
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash-preview"
+      ],
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ],
+      "checked_at": "2026-10-07",
+      "account_availability": {
+        "checked_at": "2026-10-08",
+        "finding": "gemini-2.5-flash and gemini-2.5-flash-lite return HTTP 404 'no longer available to new users' on all 8 Google keys in the Jupiter Vault, so no free Google Search grounding route exists for these accounts; Gemini 3.x grounding is not available on the free tier (pricing page, last updated 2026-10-07)."
+      }
+    }
+  },
+  "model_io": [
+    {
+      "provider": "google",
+      "model": "gemini-3.8-flash",
+      "inputs": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "outputs": [
+        "text"
+      ],
+      "input_token_limit": 1048576,
+      "output_token_limit": 65536,
+      "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
+      "checked_at": "2026-10-08",
+      "page_updated": "2026-09-02"
+    },
+    {
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "inputs": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "outputs": [
+        "text"
+      ],
+      "input_token_limit": 1048576,
+      "output_token_limit": 65536,
+      "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite",
+      "checked_at": "2026-10-08",
+      "page_updated": "2026-07-30"
+    },
+    {
+      "provider": "google",
+      "model": "gemini-3-flash-preview",
+      "inputs": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "outputs": [
+        "text"
+      ],
+      "input_token_limit": 1048576,
+      "output_token_limit": 65536,
+      "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3-flash-preview",
+      "checked_at": "2026-10-08",
+      "page_updated": "2026-08-18"
+    }
+  ]
+}

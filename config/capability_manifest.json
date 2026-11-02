@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {"id": "chat", "name": "Natural Chat", "description": "Responsive conversation with task-aware model routing.", "icon": "ph-chat-circle", "status_source": "always"},
+    {"id": "app_connect", "name": "App Connect", "description": "Connected external services. Gmail currently provides read-only access after per-user consent.", "icon": "ph-plugs-connected", "status_source": "app_connect"},
+    {"id": "image_generation", "name": "Create Image", "description": "Generate an image through a verified-free image route.", "icon": "ph-image", "status_source": "image_generation"},
+    {"id": "image_revision", "name": "Edit Again / Image Revision", "description": "Create a semantic revision from the prior image and your requested changes.", "icon": "ph-pencil-simple-line", "status_source": "image_revision"},
+    {"id": "live_voice", "name": "Live Conversation", "description": "Hands-free conversation with interruption and natural speech.", "icon": "ph-waveform", "status_source": "live_voice"},
+    {"id": "read_aloud", "name": "Read Aloud", "description": "Read an existing Jupiter response in a natural voice.", "icon": "ph-speaker-high", "status_source": "natural_tts"},
+    {"id": "speech_to_text", "name": "Speech-to-Text", "description": "Turn microphone speech into a chat prompt.", "icon": "ph-microphone", "status_source": "speech_to_text"},
+    {"id": "natural_tts", "name": "Natural Text-to-Speech", "description": "Natural Iapetus speech with a persistent per-user cache.", "icon": "ph-sound-high", "status_source": "natural_tts"},
+    {"id": "memory", "name": "Memory", "description": "Use relevant, user-scoped memories across conversations.", "icon": "ph-brain", "status_source": "always"},
+    {"id": "memory_review", "name": "Profile Memory Review", "description": "Review uncertain memory updates before they become durable.", "icon": "ph-check-square-offset", "status_source": "always"},
+    {"id": "weather", "name": "Weather", "description": "Current conditions and forecasts through the weather specialist.", "icon": "ph-cloud-sun", "status_source": "configured_service"},
+    {"id": "pdf", "name": "PDF / Document Understanding", "description": "Understand uploaded documents and PDFs.", "icon": "ph-file-pdf", "status_source": "local_pdf"},
+    {"id": "vision", "name": "Vision / Image Understanding", "description": "Image understanding and OCR use separate eligible vision routes; this is not image generation.", "icon": "ph-eye", "status_source": "vision"},
+    {"id": "video_understanding", "name": "Video Understanding", "description": "Private, bounded local inspection of supported uploaded videos before any approved specialist enrichment.", "icon": "ph-video-camera", "status_source": "video_understanding"},
+    {"id": "video_qa", "name": "Video Q&A", "description": "Ask questions using relevant private video timeline and local evidence.", "icon": "ph-question", "status_source": "video_understanding"},
+    {"id": "video_timeline", "name": "Video Timeline Analysis", "description": "Build a bounded timeline from local scene changes and future approved specialist evidence.", "icon": "ph-timeline", "status_source": "video_understanding"},
+    {"id": "video_people", "name": "People / Face Detection in Video", "description": "Anonymous local face/person detection and tracking where available; identity remains consent-gated.", "icon": "ph-users", "status_source": "video_people"},
+    {"id": "web_research", "name": "Web Research / Search", "description": "Research current public information through eligible tool routes.", "icon": "ph-globe", "status_source": "registry_role", "status_role": "web_research"},
+    {"id": "code", "name": "Code Help", "description": "Write, explain, review, and debug code.", "icon": "ph-code", "status_source": "registry_role", "status_role": "coding"},
+    {"id": "language", "name": "Language Support", "description": "English, Hindi, Hinglish, and translation-aware responses.", "icon": "ph-translate", "status_source": "always"},
+    {"id": "live_translation", "name": "Live Translation", "description": "Act as a spoken interpreter between languages.", "icon": "ph-translate", "status_source": "live_translation"},
+    {"id": "language_learning", "name": "Language Learning", "description": "Learn, practice, and get spoken corrections in a new language.", "icon": "ph-chalkboard-teacher", "status_source": "language_learning"}
+  ]
+}

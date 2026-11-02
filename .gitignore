@@ -1,0 +1,35 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# User data, logs, local state
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Builds and tooling
+build/
+dist/
+release/
+*.apk
+*.aab
+*.exe
+*.dll
+*.jar
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+.vscode/

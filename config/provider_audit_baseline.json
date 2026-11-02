@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-08-22T21:03:44+05:30",
+  "source": "Jupiter_Model_Audit_2026-08-22.md",
+  "providers": {
+    "openweather": {
+      "health": "AUTH_INVALID",
+      "classification": "CONFIGURATION_MISSING_INVALID",
+      "reason": "The latest read-only audit received HTTP 401. Runtime success may supersede this observation."
+    },
+    "bytez": {
+      "health": "CONFIG_MAPPING_REPAIRED_NOT_REVERIFIED",
+      "classification": "SPECIALIST_ONLY",
+      "reason": "The adapter now follows the official modelId catalog and run endpoint shapes; inference remains disabled pending explicit verification."
+    },
+    "google_cloud_vision": {
+      "health": "CONFIG_MISSING",
+      "classification": "CONFIGURATION_MISSING_INVALID",
+      "reason": "The configured backend service-account path was missing or invalid during local inspection."
+    },
+    "gmail": {
+      "health": "PLATFORM_CONFIG_INCOMPLETE",
+      "classification": "CONFIGURATION_MISSING_INVALID",
+      "reason": "Desktop/Web OAuth credential paths were unavailable during local inspection; Android server-client configuration is tracked separately."
+    },
+    "faceplusplus": {
+      "health": "VERIFIED_SPECIALIST",
+      "classification": "SPECIALIST_ONLY",
+      "reason": "Detect, Compare, FaceSet, and Search were verified by the latest read-only audit."
+    }
+  }
+}
